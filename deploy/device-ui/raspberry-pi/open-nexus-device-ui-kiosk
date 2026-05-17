@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DEVICE_UI_URL:=http://127.0.0.1:3000}"
+: "${BRAIN_HTTP_URL:=http://127.0.0.1:4317}"
+: "${BRAIN_WS_URL:=ws://127.0.0.1:4317}"
+: "${CHROMIUM_BINARY:=chromium-browser}"
+: "${KIOSK_DISPLAY:=:0}"
+
+export DISPLAY="${KIOSK_DISPLAY}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+encoded_brain_http_url="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$BRAIN_HTTP_URL")"
+encoded_brain_ws_url="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$BRAIN_WS_URL")"
+
+separator="?"
+if [[ "$DEVICE_UI_URL" == *"?"* ]]; then
+  separator="&"
+fi
+
+exec "$CHROMIUM_BINARY" \
+  --kiosk \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --check-for-update-interval=31536000 \
+  "${DEVICE_UI_URL}${separator}brainHttpUrl=${encoded_brain_http_url}&brainWsUrl=${encoded_brain_ws_url}"
