@@ -26,6 +26,15 @@ export function createBrainServer(options: BrainServerOptions = {}) {
   const events = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
 
+  app.use((_request, response, next) => {
+    response.setHeader("access-control-allow-origin", "*");
+    response.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
+    response.setHeader("access-control-allow-headers", "content-type");
+    next();
+  });
+  app.options(/.*/, (_request, response) => {
+    response.sendStatus(204);
+  });
   app.use(express.json());
 
   events.on("connection", (socket) => {

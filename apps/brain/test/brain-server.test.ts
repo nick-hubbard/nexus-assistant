@@ -29,6 +29,24 @@ describe("Brain Server", () => {
     });
   });
 
+  it("allows browser prompt submissions from the Device UI", async () => {
+    const brain = await startBrainServer();
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://localhost:3000",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(response.headers.get("access-control-allow-headers")).toContain("content-type");
+  });
+
   it("starts a Prompt Exchange over HTTP and publishes deterministic WebSocket events", async () => {
     const brain = await startBrainServer();
     const socket = await connectEvents(brain);
