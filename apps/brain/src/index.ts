@@ -16,17 +16,24 @@ import { loadConfig, validateConfig } from "./config.js";
 import { FakeAiProvider } from "./fake-provider.js";
 import { createPromptExchangeId, createSystemIssueId } from "./ids.js";
 import { InteractionLog } from "./interaction-log.js";
+import {
+  correlationIdForSystemIssue,
+  createIssueReporter,
+  type IssueReporter,
+} from "./issue-reporter.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
   provider?: FakeAiProvider;
   interactionLog?: InteractionLog;
+  issueReporter?: IssueReporter;
 }
 
 export function createBrainServer(options: BrainServerOptions = {}) {
   const config = options.config ? validateConfig(options.config) : loadConfig();
   const provider = options.provider ?? new FakeAiProvider();
   const interactionLog = options.interactionLog ?? new InteractionLog(config.dataDir);
+  const issueReporter = options.issueReporter ?? createIssueReporter(config.discordWebhookUrl);
   const app = express();
   const server = http.createServer(app);
   const events = new WebSocketServer({ noServer: true });
@@ -91,7 +98,35 @@ export function createBrainServer(options: BrainServerOptions = {}) {
         promptExchangeId,
         interactionLog,
         provider,
+        issueReporter,
         publish: (event) => publishEvent(sockets, event),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/system-issues", async (request, response, next) => {
+    try {
+      const systemIssue = SystemIssueSchema.parse(request.body);
+      const correlationId = correlationIdForSystemIssue(systemIssue);
+
+      interactionLog.recordSystemIssue(systemIssue);
+      await issueReporter.report({ systemIssue, correlationId });
+
+      publishEvent(
+        sockets,
+        WebSocketEventSchema.parse({
+          type: "system-issue.reported",
+          occurredAt: new Date().toISOString(),
+          payload: systemIssue,
+        }),
+      );
+
+      response.status(202).json({
+        systemIssueId: systemIssue.systemIssueId,
+        correlationId,
+        status: "reported",
       });
     } catch (error) {
       next(error);
@@ -153,6 +188,7 @@ interface RunPromptExchangeOptions {
   promptExchangeId: string;
   interactionLog: InteractionLog;
   provider: FakeAiProvider;
+  issueReporter: IssueReporter;
   publish: (event: WebSocketEvent) => void;
 }
 
@@ -162,6 +198,7 @@ async function runPromptExchange({
   promptExchangeId,
   interactionLog,
   provider,
+  issueReporter,
   publish,
 }: RunPromptExchangeOptions) {
   publish(
@@ -212,6 +249,10 @@ async function runPromptExchange({
       error,
     });
     interactionLog.recordSystemIssue(systemIssue);
+    await issueReporter.report({
+      systemIssue,
+      correlationId: correlationIdForSystemIssue(systemIssue),
+    });
     publish(
       WebSocketEventSchema.parse({
         type: "prompt-exchange.failed",

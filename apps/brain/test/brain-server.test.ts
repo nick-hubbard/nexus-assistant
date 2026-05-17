@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import type { BrainConfig } from "../src/config.js";
 import { createBrainServer } from "../src/index.js";
+import type { IssueReport, IssueReporter } from "../src/issue-reporter.js";
 
 const openServers: Array<ReturnType<typeof createBrainServer>> = [];
 
@@ -73,7 +74,8 @@ describe("Brain Server", () => {
   });
 
   it("starts a Prompt Exchange over HTTP and publishes deterministic WebSocket events", async () => {
-    const brain = await startBrainServer();
+    const issueReporter = new FakeIssueReporter();
+    const brain = await startBrainServer({ issueReporter });
     const socket = await connectEvents(brain);
     const messages = collectMessages(socket, 4);
 
@@ -131,6 +133,57 @@ describe("Brain Server", () => {
     expect(JSON.parse(String(loggedEvents[1]?.payload_json))).toMatchObject({
       response: "Fake provider response: What is next?",
     });
+    expect(issueReporter.reports).toEqual([]);
+  });
+
+  it("records and reports System Issues from the Device UI", async () => {
+    const issueReporter = new FakeIssueReporter();
+    const brain = await startBrainServer({ issueReporter });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 1);
+
+    const systemIssue = {
+      systemIssueId: "si_deviceoffline0001",
+      severity: "error",
+      source: "device-ui",
+      category: "connectivity",
+      message: "Device UI lost contact with the Brain Server.",
+      occurredAt: new Date().toISOString(),
+      deviceId: "dev_kitchen-display",
+    };
+    const response = await fetch(`${baseUrl(brain)}/system-issues`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(systemIssue),
+    });
+
+    const body = await response.json();
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(body).toMatchObject({
+      systemIssueId: systemIssue.systemIssueId,
+      correlationId: systemIssue.systemIssueId,
+      status: "reported",
+    });
+    expect(issueReporter.reports).toEqual([
+      {
+        correlationId: systemIssue.systemIssueId,
+        systemIssue,
+      },
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "system-issue.reported",
+      payload: systemIssue,
+    });
+
+    const loggedEvents = brain.interactionLog.allEvents();
+    expect(loggedEvents.map((event) => event.type)).toEqual(["system-issue.reported"]);
+    expect(loggedEvents[0]?.correlation_id).toBe(systemIssue.systemIssueId);
+    expect(JSON.parse(String(loggedEvents[0]?.payload_json))).toMatchObject(systemIssue);
   });
 
   it("validates configuration at startup", () => {
@@ -148,9 +201,10 @@ describe("Brain Server", () => {
   });
 });
 
-async function startBrainServer() {
+async function startBrainServer(options: { issueReporter?: IssueReporter } = {}) {
   const brain = createBrainServer({
     config: createTestConfig({ dataDir: await createDataDir() }),
+    ...(options.issueReporter ? { issueReporter: options.issueReporter } : {}),
   });
 
   await brain.initialize();
@@ -200,4 +254,12 @@ function collectMessages(socket: WebSocket, count: number) {
     });
     socket.once("error", reject);
   });
+}
+
+class FakeIssueReporter implements IssueReporter {
+  readonly reports: IssueReport[] = [];
+
+  async report(issueReport: IssueReport) {
+    this.reports.push(issueReport);
+  }
 }
