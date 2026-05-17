@@ -1,0 +1,12 @@
+{
+  "name": "@open-nexus/merge-gate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "dev": "vitest --watch=false",
+    "lint": "biome check .",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}
