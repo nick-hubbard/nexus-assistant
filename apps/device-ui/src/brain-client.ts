@@ -18,11 +18,26 @@ export interface BrainConnectionHandlers {
 
 export type BrainClient = ReturnType<typeof createBrainClient>;
 
+function getKioskBrainUrlParam(name: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const value = new URLSearchParams(window.location.search).get(name)?.trim();
+  return value ? value : undefined;
+}
+
 export function createBrainClient(options: BrainClientOptions = {}) {
   const httpUrl =
-    options.httpUrl ?? process.env.NEXT_PUBLIC_BRAIN_HTTP_URL ?? "http://127.0.0.1:4317";
+    options.httpUrl ??
+    getKioskBrainUrlParam("brainHttpUrl") ??
+    process.env.NEXT_PUBLIC_BRAIN_HTTP_URL ??
+    "http://127.0.0.1:4317";
   const webSocketUrl =
-    options.webSocketUrl ?? process.env.NEXT_PUBLIC_BRAIN_WS_URL ?? "ws://127.0.0.1:4317";
+    options.webSocketUrl ??
+    getKioskBrainUrlParam("brainWsUrl") ??
+    process.env.NEXT_PUBLIC_BRAIN_WS_URL ??
+    "ws://127.0.0.1:4317";
 
   return {
     connect(handlers: BrainConnectionHandlers) {

@@ -93,4 +93,42 @@ describe("createBrainClient", () => {
     );
     expect(accepted.status).toBe("accepted");
   });
+
+  it("uses Brain Server URLs passed through kiosk launch query params", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    window.history.replaceState(
+      null,
+      "",
+      "/?brainHttpUrl=http%3A%2F%2Fbrain.local%3A4317&brainWsUrl=ws%3A%2F%2Fbrain.local%3A4317",
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        promptExchangeId: "px_123456789012",
+        status: "accepted",
+        acceptedAt: new Date().toISOString(),
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBrainClient();
+    client.connect({
+      onConnected: vi.fn(),
+      onDisconnected: vi.fn(),
+      onEvent: vi.fn(),
+    });
+    await client.submitPrompt({
+      deviceId: "dev_device-ui",
+      prompt: "Hello",
+      requestedAt: new Date().toISOString(),
+    });
+
+    expect(sockets[0]?.url).toBe("ws://brain.local:4317/events");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://brain.local:4317/prompts",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
 });

@@ -40,6 +40,12 @@ Expected local URLs:
 
 The Brain Server defaults to `BRAIN_AI_PROVIDER=fake` and stores local Brain Files and Interaction Logs under `apps/brain/data/brain` when started from the workspace script.
 
+## Raspberry Pi Kiosk Deployment
+
+Repo-owned Kiosk Deployment assets live in `deploy/device-ui/raspberry-pi/`.
+
+Use them to install a systemd service that launches the Device UI fullscreen in Chromium when the Raspberry Pi boots. See `deploy/device-ui/raspberry-pi/README.md` for install, update, start, stop, and troubleshooting steps.
+
 ## Environment
 
 Brain Server settings live in `apps/brain/.env`:
