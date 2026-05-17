@@ -6,6 +6,7 @@ const ConfigSchema = z
     host: z.string().min(1),
     version: z.string().min(1),
     provider: z.literal("fake"),
+    dataDir: z.string().min(1),
   })
   .strict();
 
@@ -17,6 +18,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BrainConfig {
     host: env.BRAIN_HOST ?? "127.0.0.1",
     version: env.BRAIN_VERSION ?? "0.1.0",
     provider: env.BRAIN_AI_PROVIDER ?? "fake",
+    dataDir: env.BRAIN_DATA_DIR ?? "./data/brain",
   });
 }
 

@@ -1,4 +1,7 @@
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   PromptExchangeAcceptedSchema,
   type WebSocketEvent,
@@ -6,6 +9,7 @@ import {
 } from "@open-nexus/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+import type { BrainConfig } from "../src/config.js";
 import { createBrainServer } from "../src/index.js";
 
 const openServers: Array<ReturnType<typeof createBrainServer>> = [];
@@ -15,6 +19,27 @@ afterEach(async () => {
 });
 
 describe("Brain Server", () => {
+  it("initializes Brain Files without overwriting existing edits", async () => {
+    const dataDir = await createDataDir();
+    const memoryPath = path.join(dataDir, "MEMORY.md");
+    await writeFile(memoryPath, "# Memory\n\nUser-authored memory.\n");
+
+    const brain = createBrainServer({
+      config: createTestConfig({ dataDir }),
+    });
+    openServers.push(brain);
+
+    await brain.initialize();
+
+    await expect(readFile(path.join(dataDir, "IDENTITY.md"), "utf8")).resolves.toContain(
+      "# Identity",
+    );
+    await expect(readFile(memoryPath, "utf8")).resolves.toBe("# Memory\n\nUser-authored memory.\n");
+    await expect(readFile(path.join(dataDir, "INSTRUCTIONS.md"), "utf8")).resolves.toContain(
+      "# Instructions",
+    );
+  });
+
   it("exposes a health response", async () => {
     const brain = await startBrainServer();
 
@@ -90,6 +115,22 @@ describe("Brain Server", () => {
       status: "completed",
       response: "Fake provider response: What is next?",
     });
+
+    const loggedEvents = brain.interactionLog.allEvents();
+    expect(loggedEvents.map((event) => event.type)).toEqual([
+      "prompt.requested",
+      "provider.response",
+    ]);
+    expect(loggedEvents.every((event) => event.correlation_id === accepted.promptExchangeId)).toBe(
+      true,
+    );
+    expect(JSON.parse(String(loggedEvents[0]?.payload_json))).toMatchObject({
+      deviceId: "dev_kitchen-display",
+      prompt: "What is next?",
+    });
+    expect(JSON.parse(String(loggedEvents[1]?.payload_json))).toMatchObject({
+      response: "Fake provider response: What is next?",
+    });
   });
 
   it("validates configuration at startup", () => {
@@ -100,6 +141,7 @@ describe("Brain Server", () => {
           host: "127.0.0.1",
           version: "test-version",
           provider: "fake",
+          dataDir: "./data/test",
         },
       }),
     ).toThrow();
@@ -108,17 +150,28 @@ describe("Brain Server", () => {
 
 async function startBrainServer() {
   const brain = createBrainServer({
-    config: {
-      port: 0,
-      host: "127.0.0.1",
-      version: "test-version",
-      provider: "fake",
-    },
+    config: createTestConfig({ dataDir: await createDataDir() }),
   });
 
+  await brain.initialize();
   await new Promise<void>((resolve) => brain.server.listen(0, "127.0.0.1", resolve));
   openServers.push(brain);
   return brain;
+}
+
+function createTestConfig(overrides: Partial<BrainConfig>) {
+  return {
+    port: 0,
+    host: "127.0.0.1",
+    version: "test-version",
+    provider: "fake" as const,
+    dataDir: "./data/test",
+    ...overrides,
+  };
+}
+
+async function createDataDir() {
+  return mkdtemp(path.join(tmpdir(), "open-nexus-brain-"));
 }
 
 function baseUrl(brain: ReturnType<typeof createBrainServer>) {
