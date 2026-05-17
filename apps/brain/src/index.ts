@@ -3,24 +3,30 @@ import {
   HealthResponseSchema,
   PromptExchangeAcceptedSchema,
   PromptRequestSchema,
+  type SystemIssue,
+  SystemIssueSchema,
   type WebSocketEvent,
   WebSocketEventSchema,
 } from "@open-nexus/protocol";
 import express from "express";
 import { type WebSocket, WebSocketServer } from "ws";
+import { initializeBrainFiles } from "./brain-files.js";
 import type { BrainConfig } from "./config.js";
 import { loadConfig, validateConfig } from "./config.js";
 import { FakeAiProvider } from "./fake-provider.js";
-import { createPromptExchangeId } from "./ids.js";
+import { createPromptExchangeId, createSystemIssueId } from "./ids.js";
+import { InteractionLog } from "./interaction-log.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
   provider?: FakeAiProvider;
+  interactionLog?: InteractionLog;
 }
 
 export function createBrainServer(options: BrainServerOptions = {}) {
   const config = options.config ? validateConfig(options.config) : loadConfig();
   const provider = options.provider ?? new FakeAiProvider();
+  const interactionLog = options.interactionLog ?? new InteractionLog(config.dataDir);
   const app = express();
   const server = http.createServer(app);
   const events = new WebSocketServer({ noServer: true });
@@ -69,6 +75,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
       const promptRequest = PromptRequestSchema.parse(request.body);
       const promptExchangeId = createPromptExchangeId();
       const acceptedAt = new Date().toISOString();
+      interactionLog.recordPromptRequest(promptExchangeId, promptRequest);
 
       response.status(202).json(
         PromptExchangeAcceptedSchema.parse({
@@ -82,6 +89,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
         deviceId: promptRequest.deviceId,
         prompt: promptRequest.prompt,
         promptExchangeId,
+        interactionLog,
         provider,
         publish: (event) => publishEvent(sockets, event),
       });
@@ -108,8 +116,10 @@ export function createBrainServer(options: BrainServerOptions = {}) {
     server,
     events,
     config,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    interactionLog,
+    initialize: () => initializeBrainFiles(config.dataDir),
+    close: async () => {
+      await new Promise<void>((resolve, reject) => {
         for (const socket of sockets) {
           socket.close();
         }
@@ -118,15 +128,22 @@ export function createBrainServer(options: BrainServerOptions = {}) {
             reject(eventsError);
             return;
           }
+          if (!server.listening) {
+            interactionLog.close();
+            resolve();
+            return;
+          }
           server.close((serverError) => {
             if (serverError) {
               reject(serverError);
               return;
             }
+            interactionLog.close();
             resolve();
           });
         });
-      }),
+      });
+    },
   };
 }
 
@@ -134,6 +151,7 @@ interface RunPromptExchangeOptions {
   deviceId: string;
   prompt: string;
   promptExchangeId: string;
+  interactionLog: InteractionLog;
   provider: FakeAiProvider;
   publish: (event: WebSocketEvent) => void;
 }
@@ -142,6 +160,7 @@ async function runPromptExchange({
   deviceId,
   prompt,
   promptExchangeId,
+  interactionLog,
   provider,
   publish,
 }: RunPromptExchangeOptions) {
@@ -160,34 +179,90 @@ async function runPromptExchange({
   let response = "";
   let sequence = 0;
 
-  for await (const chunk of provider.complete({ prompt })) {
-    response += chunk.delta;
+  try {
+    for await (const chunk of provider.complete({ prompt })) {
+      response += chunk.delta;
+      publish(
+        WebSocketEventSchema.parse({
+          type: "prompt-exchange.delta",
+          promptExchangeId,
+          occurredAt: new Date().toISOString(),
+          payload: {
+            status: "streaming",
+            delta: chunk.delta,
+            sequence,
+          },
+        }),
+      );
+      sequence += 1;
+    }
+  } catch (error) {
+    const occurredAt = new Date().toISOString();
+    const systemIssue = createRuntimeSystemIssue({
+      deviceId,
+      promptExchangeId,
+      occurredAt,
+      error,
+    });
+    interactionLog.recordRuntimeError({
+      correlationId: promptExchangeId,
+      promptExchangeId,
+      deviceId,
+      occurredAt,
+      error,
+    });
+    interactionLog.recordSystemIssue(systemIssue);
     publish(
       WebSocketEventSchema.parse({
-        type: "prompt-exchange.delta",
+        type: "prompt-exchange.failed",
         promptExchangeId,
-        occurredAt: new Date().toISOString(),
+        occurredAt,
         payload: {
-          status: "streaming",
-          delta: chunk.delta,
-          sequence,
+          status: "failed",
+          systemIssue,
         },
       }),
     );
-    sequence += 1;
+    return;
   }
+
+  const completedAt = new Date().toISOString();
+  interactionLog.recordProviderResponse({
+    promptExchangeId,
+    deviceId,
+    response,
+    occurredAt: completedAt,
+  });
 
   publish(
     WebSocketEventSchema.parse({
       type: "prompt-exchange.completed",
       promptExchangeId,
-      occurredAt: new Date().toISOString(),
+      occurredAt: completedAt,
       payload: {
         status: "completed",
         response,
       },
     }),
   );
+}
+
+function createRuntimeSystemIssue(options: {
+  deviceId: string;
+  promptExchangeId: string;
+  occurredAt: string;
+  error: unknown;
+}): SystemIssue {
+  return SystemIssueSchema.parse({
+    systemIssueId: createSystemIssueId(),
+    severity: "error",
+    source: "brain-server",
+    category: "runtime",
+    message: options.error instanceof Error ? options.error.message : "Unknown runtime error.",
+    occurredAt: options.occurredAt,
+    deviceId: options.deviceId,
+    promptExchangeId: options.promptExchangeId,
+  });
 }
 
 function publishEvent(sockets: Set<WebSocket>, event: WebSocketEvent) {
@@ -202,7 +277,15 @@ function publishEvent(sockets: Set<WebSocket>, event: WebSocketEvent) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const brain = createBrainServer();
-  brain.server.listen(brain.config.port, brain.config.host, () => {
-    console.log(`Brain Server listening on http://${brain.config.host}:${brain.config.port}`);
-  });
+  brain
+    .initialize()
+    .then(() => {
+      brain.server.listen(brain.config.port, brain.config.host, () => {
+        console.log(`Brain Server listening on http://${brain.config.host}:${brain.config.port}`);
+      });
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
 }
