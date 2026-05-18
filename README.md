@@ -91,6 +91,8 @@ Device UI settings live in `apps/device-ui/.env`:
 
 - `NEXT_PUBLIC_BRAIN_HTTP_URL`: Browser-visible Brain Server HTTP base URL.
 - `NEXT_PUBLIC_BRAIN_WS_URL`: Browser-visible Brain Server WebSocket base URL.
+- `NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL`: Browser-visible local Device Runtime WebSocket base URL.
+- `NEXT_PUBLIC_DEVICE_UI_MODE`: Set to `development` to enable the Option+T Development Wake Shortcut; plain `pnpm dev` also enables it through Next.js development mode.
 
 ## Merge Gate
 

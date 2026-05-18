@@ -32,6 +32,18 @@ _Avoid_: free provider, no-key API
 A user-initiated assistant request and the response events produced for it.
 _Avoid_: chat call, message request
 
+**Device Wake Phrase**:
+A spoken phrase detected locally by the **Device UI** that makes the prompt composer available.
+_Avoid_: hotphrase, Brain wake word, server wake command
+
+**Device Runtime**:
+A local companion process on the device that owns hardware-facing device capabilities for the **Device UI**.
+_Avoid_: browser app, Brain Server plugin, provider service
+
+**Development Wake Shortcut**:
+A development-only keyboard shortcut that exercises **Device Wake Phrase** behavior without kiosk hardware.
+_Avoid_: production hotkey, command-line wake flag, test-only bypass
+
 **Brain File**:
 A human-readable Markdown file that defines durable assistant identity, memory, or configuration.
 _Avoid_: database config, hidden state
@@ -74,6 +86,12 @@ _Avoid_: smoke check, fast check
 - A **Brain Server** can serve one or more **Device UIs**.
 - In the primary **Local Deployment**, the **Device UI** and **Brain Server** may run on separate machines.
 - A **Kiosk Deployment** runs the **Device UI** without requiring manual browser startup after boot.
+- A **Device Wake Phrase** is detected by a local **Device Runtime** and consumed by the **Device UI**, not the **Brain Server**.
+- The **Device Runtime** sends local WebSocket events to the **Device UI** for device wake phrase detection.
+- A device wake phrase detection event is named `device-wake-phrase.detected` and carries detection time plus phrase text.
+- Local development must let a browser-served **Device UI** exercise wake phrase behavior with a **Development Wake Shortcut** enabled by environment configuration.
+- The **Development Wake Shortcut** is Option+T.
+- After wake phrase activation, the **Device UI** returns to standby after five idle seconds or five seconds after a **Prompt Exchange** completes or fails.
 - Only the **Brain Server** calls **AI Providers** at runtime.
 - The first **AI Provider** must be a **Subscription Provider** backed by OpenAI/Codex subscription authentication.
 - A **Prompt Exchange** starts over HTTP and can continue over WebSocket events.
