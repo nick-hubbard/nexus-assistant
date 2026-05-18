@@ -46,6 +46,12 @@ Repo-owned Kiosk Deployment assets live in `deploy/device-ui/raspberry-pi/`.
 
 Use them to install a systemd service that launches the Device UI fullscreen in Chromium when the Raspberry Pi boots. See `deploy/device-ui/raspberry-pi/README.md` for install, update, start, stop, and troubleshooting steps.
 
+## Brain Server Docker Deployment
+
+Repo-owned Brain Server Docker assets live in `deploy/brain/`.
+
+Use them to build and run a local container with the Brain Server port published and `/data` mounted for persistent Brain Files and SQLite Interaction Logs. See `deploy/brain/README.md` for build, compose, environment, and Subscription Provider bridge notes.
+
 ## Environment
 
 Brain Server settings live in `apps/brain/.env`:

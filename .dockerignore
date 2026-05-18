@@ -1,0 +1,15 @@
+.git
+.githooks
+.turbo
+**/.turbo
+**/.next
+**/data
+**/node_modules
+node_modules
+coverage
+dist
+deploy/brain/data
+.env
+**/.env
+!.env.example
+!**/.env.example
