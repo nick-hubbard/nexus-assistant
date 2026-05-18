@@ -48,14 +48,21 @@ Required for Docker:
 Common optional settings:
 
 - `BRAIN_VERSION=0.1.0`: Version returned by `/health`.
-- `BRAIN_AI_PROVIDER=fake`: Current Docker-safe AI Provider mode.
+- `BRAIN_AI_PROVIDER=fake`: Docker-safe AI Provider mode. Use `openai-codex` only when the container can invoke a host-authenticated Codex bridge.
+- `BRAIN_CODEX_COMMAND=codex`: Command used by the `openai-codex` bridge.
+- `BRAIN_CODEX_ARGS=exec`: Whitespace-separated arguments passed before the prompt.
+- `BRAIN_CODEX_TIMEOUT_MS=120000`: Bridge timeout in milliseconds.
 - `DISCORD_WEBHOOK_URL`: Optional Issue Reporter destination for System Issues.
 
 ## Subscription Provider Bridge Limitations
 
 The Docker image defaults to the fake AI Provider because the OpenAI/Codex Subscription Provider is designed around a local authenticated runtime bridge, not an OpenAI Platform API key. Do not bake subscription credentials, browser profiles, or local runtime sockets into the image.
 
-Until the `openai-codex` Subscription Provider adapter is implemented, run Docker deployments with `BRAIN_AI_PROVIDER=fake`. When the bridge exists, prefer mounting only the narrow runtime bridge files or sockets needed by that adapter, and keep user subscription authentication owned by the host machine.
+For host-local development, run `codex login` on the same machine that starts the Brain Server, set `BRAIN_AI_PROVIDER=openai-codex`, and start the Brain Server normally. The adapter invokes `codex exec "<prompt>"` by default and turns non-zero exits, startup failures, empty output, and timeouts into provider System Issues.
+
+If the installed global `codex` wrapper is unavailable but `npx @openai/codex@latest exec` works, set `BRAIN_CODEX_COMMAND=npx` and `BRAIN_CODEX_ARGS="-y @openai/codex@latest exec"`.
+
+For Docker deployments, keep `BRAIN_AI_PROVIDER=fake` unless you intentionally expose a narrow host-authenticated Codex bridge command into the container. Keep user subscription authentication owned by the host machine.
 
 ## Validation
 

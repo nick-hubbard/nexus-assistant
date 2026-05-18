@@ -1,12 +1,8 @@
-export interface ProviderPrompt {
-  prompt: string;
-}
+import type { AiProvider, ProviderPrompt, ProviderResponseChunk } from "./provider.js";
 
-export interface ProviderResponseChunk {
-  delta: string;
-}
+export class FakeAiProvider implements AiProvider {
+  readonly name = "fake";
 
-export class FakeAiProvider {
   async *complete({ prompt }: ProviderPrompt): AsyncGenerator<ProviderResponseChunk> {
     const response = `Fake provider response: ${prompt}`;
 
