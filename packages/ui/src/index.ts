@@ -9,3 +9,14 @@ export {
   Textarea,
   VisuallyMuted,
 } from "./components/primitives";
+export {
+  coreDeviceSurfacePlugin,
+  type DeviceSurfaceDevice,
+  type DeviceSurfacePlugin,
+  type DeviceSurfacePluginId,
+  type DeviceSurfaceProps,
+  deviceSurfacePlugins,
+  getDeviceSurfacePlugin,
+  type NestHubSurfaceSettings,
+  nestHubDeviceSurfacePlugin,
+} from "./device-surfaces";

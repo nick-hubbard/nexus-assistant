@@ -1,6 +1,6 @@
 "use client";
 
-import { DeviceScreen, type PromptState } from "@open-nexus/ui";
+import { nestHubDeviceSurfacePlugin, type PromptState } from "@open-nexus/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrainClient } from "../src/brain-client";
 import { createDeviceRuntimeClient } from "../src/device-runtime-client";
@@ -11,6 +11,7 @@ const standbyDelayMs = 5000;
 export function DeviceClient() {
   const client = useMemo(() => createBrainClient(), []);
   const deviceRuntimeClient = useMemo(() => createDeviceRuntimeClient(), []);
+  const activeDeviceSurface = nestHubDeviceSurfacePlugin;
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const promptExchangeIdRef = useRef<string | undefined>(undefined);
   const [assistantResponse, setAssistantResponse] = useState("");
@@ -137,11 +138,18 @@ export function DeviceClient() {
     }
   }
 
+  const ActiveDeviceSurface = activeDeviceSurface.Surface;
+
   return (
-    <DeviceScreen
+    <ActiveDeviceSurface
       assistantResponse={assistantResponse}
       connectionState={connected ? "connected" : "disconnected"}
       currentTime={currentTime}
+      device={{
+        id: deviceId,
+        locale: getDeviceLocale(),
+        timezone: getDeviceTimezone(),
+      }}
       errorMessage={errorMessage}
       onPromptChange={setPrompt}
       onSubmitPrompt={submitPrompt}
@@ -149,6 +157,7 @@ export function DeviceClient() {
       promptComposerVisible={promptComposerVisible}
       promptInputRef={promptInputRef}
       promptState={promptState}
+      settings={activeDeviceSurface.defaultSettings}
     />
   );
 }
@@ -165,4 +174,12 @@ function formatCurrentTime() {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date());
+}
+
+function getDeviceLocale() {
+  return typeof navigator === "undefined" ? "en-US" : navigator.language;
+}
+
+function getDeviceTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }

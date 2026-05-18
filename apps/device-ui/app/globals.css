@@ -17,6 +17,66 @@ body {
     linear-gradient(315deg, rgba(170, 76, 54, 0.11), transparent 38%), #f7f4ec;
 }
 
+.nexus-nest-surface {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #fffefa;
+  background-image: var(--nexus-nest-background);
+  background-position: center;
+  background-size: cover;
+}
+
+.nexus-nest-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 38%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.44), transparent 46%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.58), transparent 42%);
+  pointer-events: none;
+}
+
+.nexus-nest-status {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 1;
+}
+
+.nexus-nest-interaction {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 16px;
+  width: min(100% - 48px, 720px);
+  padding: 40px 0 120px 40px;
+}
+
+.nexus-nest-panel {
+  color: #17211b;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.nexus-nest-panel-title {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.nexus-nest-clock {
+  position: absolute;
+  right: clamp(24px, 5vw, 56px);
+  bottom: clamp(22px, 5vw, 52px);
+  z-index: 1;
+  color: #fffefa;
+  font-size: clamp(3rem, 9vw, 7rem);
+  font-weight: 700;
+  line-height: 0.9;
+  text-shadow: 0 6px 32px rgba(0, 0, 0, 0.5);
+}
+
 button,
 textarea {
   font: inherit;
@@ -179,5 +239,16 @@ h2 {
   .nexus-device-shell {
     width: min(100% - 24px, 880px);
     padding: 24px 0;
+  }
+
+  .nexus-nest-interaction {
+    width: min(100% - 24px, 720px);
+    padding: 24px 0 112px;
+    margin: 0 auto;
+  }
+
+  .nexus-nest-status {
+    top: 16px;
+    right: 16px;
   }
 }
