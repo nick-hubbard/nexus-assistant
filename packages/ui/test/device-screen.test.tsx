@@ -28,9 +28,16 @@ describe("DeviceScreen", () => {
   it("hides the prompt composer until the device wakes", () => {
     render(<DeviceScreen {...baseProps} promptComposerVisible={false} />);
 
+    expect(screen.getByRole("main")).not.toHaveClass("nexus-aurora-active");
     expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /send prompt/i })).not.toBeInTheDocument();
     expect(screen.getByText("Standby")).toBeInTheDocument();
+  });
+
+  it("shows the aurora border while the prompt composer is active", () => {
+    render(<DeviceScreen {...baseProps} promptComposerVisible />);
+
+    expect(screen.getByRole("main")).toHaveClass("nexus-aurora-active");
   });
 
   it("renders disconnected state and disables submission", () => {

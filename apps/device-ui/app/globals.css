@@ -27,6 +27,49 @@ body {
   background-size: cover;
 }
 
+.nexus-aurora-active::before,
+.nexus-aurora-active::after {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  content: "";
+  pointer-events: none;
+}
+
+.nexus-aurora-active::before {
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2) 62%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.26));
+  box-shadow: inset 0 0 24px 10px rgba(255, 255, 255, 0.08);
+}
+
+.nexus-aurora-active::after {
+  inset: -14px;
+  background: conic-gradient(
+    from 45deg,
+    #ff3b30 0deg,
+    #ff9500 52deg,
+    #ffcc00 103deg,
+    #34c759 154deg,
+    #5ac8fa 205deg,
+    #007aff 256deg,
+    #af52de 308deg,
+    #ff3b30 360deg
+  );
+  mask:
+    linear-gradient(to right, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to left, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to bottom, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to top, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px);
+  -webkit-mask:
+    linear-gradient(to right, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to left, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to bottom, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to top, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px);
+  opacity: 0.82;
+  filter: blur(8px);
+}
+
 .nexus-nest-vignette {
   position: absolute;
   inset: 0;
@@ -83,6 +126,7 @@ textarea {
 }
 
 .nexus-device-shell {
+  position: relative;
   display: grid;
   gap: 20px;
   width: min(100% - 32px, 880px);

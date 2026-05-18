@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import type { CSSProperties } from "react";
 import {
   Button,
@@ -32,11 +33,12 @@ function NestHubDeviceSurface({
   const connected = connectionState === "connected";
   const isSending = promptState === "sending";
   const isBusy = promptState === "sending" || promptState === "streaming";
+  const auroraActive = promptComposerVisible || isBusy;
   const backgroundImageUrl = settings.backgroundImageUrl || defaultBackgroundImageUrl;
 
   return (
     <main
-      className="nexus-nest-surface"
+      className={clsx("nexus-nest-surface", auroraActive && "nexus-aurora-active")}
       style={{ "--nexus-nest-background": `url("${backgroundImageUrl}")` } as CSSProperties}
     >
       <div className="nexus-nest-vignette" />

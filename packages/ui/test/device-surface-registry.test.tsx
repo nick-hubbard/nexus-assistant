@@ -34,8 +34,23 @@ describe("Device Surface registry", () => {
 
     render(<Surface {...surfaceProps} settings={nestHubDeviceSurfacePlugin.defaultSettings} />);
 
+    expect(screen.getByRole("main")).not.toHaveClass("nexus-aurora-active");
     expect(screen.getByText("10:24 AM")).toBeInTheDocument();
     expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
+  });
+
+  it("shows the aurora border when the Nest Hub prompt composer is active", () => {
+    const Surface = nestHubDeviceSurfacePlugin.Surface;
+
+    render(
+      <Surface
+        {...surfaceProps}
+        promptComposerVisible
+        settings={nestHubDeviceSurfacePlugin.defaultSettings}
+      />,
+    );
+
+    expect(screen.getByRole("main")).toHaveClass("nexus-aurora-active");
   });
 
   it("falls back to the core surface for an unknown id", () => {
