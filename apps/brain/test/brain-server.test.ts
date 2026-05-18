@@ -12,6 +12,7 @@ import { WebSocket } from "ws";
 import type { BrainConfig } from "../src/config.js";
 import { createBrainServer } from "../src/index.js";
 import type { IssueReport, IssueReporter } from "../src/issue-reporter.js";
+import { type AiProvider, AiProviderError } from "../src/provider.js";
 
 const openServers: Array<ReturnType<typeof createBrainServer>> = [];
 
@@ -186,6 +187,57 @@ describe("Brain Server", () => {
     expect(JSON.parse(String(loggedEvents[0]?.payload_json))).toMatchObject(systemIssue);
   });
 
+  it("reports AI Provider bridge failures as provider System Issues", async () => {
+    const issueReporter = new FakeIssueReporter();
+    const brain = await startBrainServer({
+      issueReporter,
+      provider: new FailingProvider(),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 2);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "What is next?",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const accepted = PromptExchangeAcceptedSchema.parse(await response.json());
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.failed",
+    ]);
+    expect(events[1]).toMatchObject({
+      promptExchangeId: accepted.promptExchangeId,
+      payload: {
+        status: "failed",
+        systemIssue: {
+          source: "ai-provider",
+          category: "provider",
+          message: "Codex bridge exited unsuccessfully.",
+          details: {
+            provider: "openai-codex",
+            exitCode: 1,
+          },
+        },
+      },
+    });
+    expect(issueReporter.reports).toHaveLength(1);
+    expect(issueReporter.reports[0]?.systemIssue).toMatchObject({
+      source: "ai-provider",
+      category: "provider",
+    });
+  });
+
   it("validates configuration at startup", () => {
     expect(() =>
       createBrainServer({
@@ -195,16 +247,22 @@ describe("Brain Server", () => {
           version: "test-version",
           provider: "fake",
           dataDir: "./data/test",
+          codexCommand: "codex",
+          codexArgs: ["exec"],
+          codexTimeoutMs: 120000,
         },
       }),
     ).toThrow();
   });
 });
 
-async function startBrainServer(options: { issueReporter?: IssueReporter } = {}) {
+async function startBrainServer(
+  options: { issueReporter?: IssueReporter; provider?: AiProvider } = {},
+) {
   const brain = createBrainServer({
     config: createTestConfig({ dataDir: await createDataDir() }),
     ...(options.issueReporter ? { issueReporter: options.issueReporter } : {}),
+    ...(options.provider ? { provider: options.provider } : {}),
   });
 
   await brain.initialize();
@@ -220,6 +278,9 @@ function createTestConfig(overrides: Partial<BrainConfig>) {
     version: "test-version",
     provider: "fake" as const,
     dataDir: "./data/test",
+    codexCommand: "codex",
+    codexArgs: ["exec"],
+    codexTimeoutMs: 120000,
     ...overrides,
   };
 }
@@ -261,5 +322,16 @@ class FakeIssueReporter implements IssueReporter {
 
   async report(issueReport: IssueReport) {
     this.reports.push(issueReport);
+  }
+}
+
+class FailingProvider implements AiProvider {
+  readonly name = "openai-codex";
+
+  async *complete() {
+    yield* [];
+    throw new AiProviderError("openai-codex", "Codex bridge exited unsuccessfully.", {
+      exitCode: 1,
+    });
   }
 }

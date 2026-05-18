@@ -12,6 +12,7 @@ import {
 import express from "express";
 import { type WebSocket, WebSocketServer } from "ws";
 import { initializeBrainFiles } from "./brain-files.js";
+import { CodexCliProvider } from "./codex-provider.js";
 import type { BrainConfig } from "./config.js";
 import { loadConfig, validateConfig } from "./config.js";
 import { FakeAiProvider } from "./fake-provider.js";
@@ -22,17 +23,18 @@ import {
   createIssueReporter,
   type IssueReporter,
 } from "./issue-reporter.js";
+import { type AiProvider, AiProviderError } from "./provider.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
-  provider?: FakeAiProvider;
+  provider?: AiProvider;
   interactionLog?: InteractionLog;
   issueReporter?: IssueReporter;
 }
 
 export function createBrainServer(options: BrainServerOptions = {}) {
   const config = options.config ? validateConfig(options.config) : loadConfig();
-  const provider = options.provider ?? new FakeAiProvider();
+  const provider = options.provider ?? createAiProvider(config);
   const interactionLog = options.interactionLog ?? new InteractionLog(config.dataDir);
   const issueReporter = options.issueReporter ?? createIssueReporter(config.discordWebhookUrl);
   const app = express();
@@ -188,7 +190,7 @@ interface RunPromptExchangeOptions {
   prompt: string;
   promptExchangeId: string;
   interactionLog: InteractionLog;
-  provider: FakeAiProvider;
+  provider: AiProvider;
   issueReporter: IssueReporter;
   publish: (event: WebSocketEvent) => void;
 }
@@ -295,6 +297,23 @@ function createRuntimeSystemIssue(options: {
   occurredAt: string;
   error: unknown;
 }): SystemIssue {
+  if (options.error instanceof AiProviderError) {
+    return SystemIssueSchema.parse({
+      systemIssueId: createSystemIssueId(),
+      severity: "error",
+      source: "ai-provider",
+      category: "provider",
+      message: options.error.message,
+      occurredAt: options.occurredAt,
+      deviceId: options.deviceId,
+      promptExchangeId: options.promptExchangeId,
+      details: {
+        provider: options.error.providerName,
+        ...options.error.diagnostics,
+      },
+    });
+  }
+
   return SystemIssueSchema.parse({
     systemIssueId: createSystemIssueId(),
     severity: "error",
@@ -305,6 +324,19 @@ function createRuntimeSystemIssue(options: {
     deviceId: options.deviceId,
     promptExchangeId: options.promptExchangeId,
   });
+}
+
+function createAiProvider(config: BrainConfig): AiProvider {
+  if (config.provider === "openai-codex") {
+    return new CodexCliProvider({
+      command: config.codexCommand,
+      args: config.codexArgs,
+      timeoutMs: config.codexTimeoutMs,
+      cwd: process.cwd(),
+    });
+  }
+
+  return new FakeAiProvider();
 }
 
 function publishEvent(sockets: Set<WebSocket>, event: WebSocketEvent) {
