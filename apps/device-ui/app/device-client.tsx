@@ -1,25 +1,76 @@
 "use client";
 
 import { DeviceScreen, type PromptState } from "@open-nexus/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrainClient } from "../src/brain-client";
+import { createDeviceRuntimeClient } from "../src/device-runtime-client";
 
 const deviceId = "dev_device-ui";
+const standbyDelayMs = 5000;
 
 export function DeviceClient() {
   const client = useMemo(() => createBrainClient(), []);
+  const deviceRuntimeClient = useMemo(() => createDeviceRuntimeClient(), []);
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const promptExchangeIdRef = useRef<string | undefined>(undefined);
   const [assistantResponse, setAssistantResponse] = useState("");
   const [connected, setConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => formatCurrentTime());
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [prompt, setPrompt] = useState("");
+  const [promptComposerVisible, setPromptComposerVisible] = useState(false);
   const [promptState, setPromptState] = useState<PromptState>("idle");
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(formatCurrentTime()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const wakePromptComposer = useCallback(() => {
+    setPromptComposerVisible(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDevelopmentDeviceUiMode()) {
+      return undefined;
+    }
+
+    const wakeWithShortcut = (event: KeyboardEvent) => {
+      if (event.altKey && event.code === "KeyT") {
+        event.preventDefault();
+        wakePromptComposer();
+      }
+    };
+
+    window.addEventListener("keydown", wakeWithShortcut);
+    return () => window.removeEventListener("keydown", wakeWithShortcut);
+  }, [wakePromptComposer]);
+
+  useEffect(() => {
+    return deviceRuntimeClient.connect({
+      onWakePhraseDetected: wakePromptComposer,
+    });
+  }, [deviceRuntimeClient, wakePromptComposer]);
+
+  useEffect(() => {
+    if (promptComposerVisible) {
+      promptInputRef.current?.focus();
+    }
+  }, [promptComposerVisible]);
+
+  useEffect(() => {
+    if (
+      !promptComposerVisible ||
+      promptState === "sending" ||
+      promptState === "streaming" ||
+      (promptState === "idle" && prompt.trim().length > 0)
+    ) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setPromptComposerVisible(false), standbyDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [prompt, promptComposerVisible, promptState]);
 
   useEffect(() => {
     return client.connect({
@@ -95,8 +146,17 @@ export function DeviceClient() {
       onPromptChange={setPrompt}
       onSubmitPrompt={submitPrompt}
       prompt={prompt}
+      promptComposerVisible={promptComposerVisible}
+      promptInputRef={promptInputRef}
       promptState={promptState}
     />
+  );
+}
+
+function isDevelopmentDeviceUiMode() {
+  return (
+    process.env.NEXT_PUBLIC_DEVICE_UI_MODE === "development" ||
+    (!process.env.NEXT_PUBLIC_DEVICE_UI_MODE && process.env.NODE_ENV === "development")
   );
 }
 

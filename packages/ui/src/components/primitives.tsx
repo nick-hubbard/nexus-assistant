@@ -1,5 +1,5 @@
 import { LoaderCircle, Send, Wifi, WifiOff } from "lucide-react";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { type ComponentPropsWithoutRef, forwardRef, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 
 export function Button({ className, children, ...props }: ComponentPropsWithoutRef<"button">) {
@@ -10,9 +10,11 @@ export function Button({ className, children, ...props }: ComponentPropsWithoutR
   );
 }
 
-export function Textarea({ className, ...props }: ComponentPropsWithoutRef<"textarea">) {
-  return <textarea className={cn("nexus-textarea", className)} {...props} />;
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, ComponentPropsWithoutRef<"textarea">>(
+  function Textarea({ className, ...props }, ref) {
+    return <textarea className={cn("nexus-textarea", className)} ref={ref} {...props} />;
+  },
+);
 
 export function Panel({ className, children, ...props }: ComponentPropsWithoutRef<"section">) {
   return (

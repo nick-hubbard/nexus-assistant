@@ -18,11 +18,19 @@ afterEach(() => {
 
 describe("DeviceScreen", () => {
   it("renders connected state", () => {
-    render(<DeviceScreen {...baseProps} />);
+    render(<DeviceScreen {...baseProps} promptComposerVisible />);
 
     expect(screen.getByText("10:24 AM")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.getByText("Waiting for a prompt.")).toBeInTheDocument();
+  });
+
+  it("hides the prompt composer until the device wakes", () => {
+    render(<DeviceScreen {...baseProps} promptComposerVisible={false} />);
+
+    expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send prompt/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Standby")).toBeInTheDocument();
   });
 
   it("renders disconnected state and disables submission", () => {

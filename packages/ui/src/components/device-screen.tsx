@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { FormEvent, Ref } from "react";
 import { Button, Panel, SendIcon, SendingIcon, StatusBadge, Textarea } from "./primitives";
 
 export type ConnectionState = "connected" | "disconnected";
@@ -12,6 +12,8 @@ export interface DeviceScreenProps {
   onPromptChange: (prompt: string) => void;
   onSubmitPrompt: () => void;
   prompt: string;
+  promptComposerVisible?: boolean;
+  promptInputRef?: Ref<HTMLTextAreaElement> | undefined;
   promptState: PromptState;
 }
 
@@ -23,6 +25,8 @@ export function DeviceScreen({
   onPromptChange,
   onSubmitPrompt,
   prompt,
+  promptComposerVisible = true,
+  promptInputRef,
   promptState,
 }: DeviceScreenProps) {
   const isSending = promptState === "sending";
@@ -49,19 +53,24 @@ export function DeviceScreen({
           <h2 id="prompt-title">Prompt</h2>
           <span>{stateLabel(promptState)}</span>
         </div>
-        <form className="nexus-prompt-form" onSubmit={submitPrompt}>
-          <Textarea
-            aria-label="Prompt input"
-            onChange={(event) => onPromptChange(event.target.value)}
-            placeholder="Ask the assistant what is next..."
-            rows={5}
-            value={prompt}
-          />
-          <Button disabled={!connected || isBusy || prompt.trim().length === 0} type="submit">
-            {isSending ? <SendingIcon /> : <SendIcon />}
-            Send prompt
-          </Button>
-        </form>
+        {promptComposerVisible ? (
+          <form className="nexus-prompt-form" onSubmit={submitPrompt}>
+            <Textarea
+              aria-label="Prompt input"
+              onChange={(event) => onPromptChange(event.target.value)}
+              placeholder="Ask the assistant what is next..."
+              ref={promptInputRef}
+              rows={5}
+              value={prompt}
+            />
+            <Button disabled={!connected || isBusy || prompt.trim().length === 0} type="submit">
+              {isSending ? <SendingIcon /> : <SendIcon />}
+              Send prompt
+            </Button>
+          </form>
+        ) : (
+          <p className="nexus-standby">Standby</p>
+        )}
         {errorMessage ? <p className="nexus-error">{errorMessage}</p> : null}
       </Panel>
 
