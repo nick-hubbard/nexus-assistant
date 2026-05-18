@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import type { FormEvent, Ref } from "react";
 import { Button, Panel, SendIcon, SendingIcon, StatusBadge, Textarea } from "./primitives";
 
@@ -32,6 +33,7 @@ export function DeviceScreen({
   const isSending = promptState === "sending";
   const isBusy = promptState === "sending" || promptState === "streaming";
   const connected = connectionState === "connected";
+  const auroraActive = promptComposerVisible || isBusy;
 
   function submitPrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,7 +41,7 @@ export function DeviceScreen({
   }
 
   return (
-    <main className="nexus-device-shell">
+    <main className={clsx("nexus-device-shell", auroraActive && "nexus-aurora-active")}>
       <header className="nexus-device-header">
         <div>
           <p className="nexus-eyebrow">Open Nexus Device</p>
