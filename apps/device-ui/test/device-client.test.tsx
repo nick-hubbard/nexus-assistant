@@ -59,6 +59,7 @@ describe("DeviceClient", () => {
     fireEvent.keyDown(window, { key: "Dead", code: "KeyT", altKey: true });
 
     expect(screen.getByLabelText("Prompt input")).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Assistant response" })).toBeInTheDocument();
   });
 
   it("keeps the development wake shortcut disabled outside development mode", () => {
@@ -107,7 +108,7 @@ describe("DeviceClient", () => {
     });
 
     expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
-    expect(screen.getByText("Standby")).toBeInTheDocument();
+    expect(screen.getByText(/\d+:\d{2}/)).toBeInTheDocument();
   });
 
   it("keeps the prompt composer open after the user starts typing", () => {
@@ -159,6 +160,6 @@ describe("DeviceClient", () => {
     });
 
     expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
-    expect(screen.getByText("Standby")).toBeInTheDocument();
+    expect(screen.getByText(/\d+:\d{2}/)).toBeInTheDocument();
   });
 });

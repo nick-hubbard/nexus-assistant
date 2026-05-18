@@ -8,6 +8,30 @@ Open Nexus is a local-first assistant system made of a central brain service and
 The touchscreen-facing Nexus client that runs fullscreen on a local device and talks to the **Brain Server** over the local network.
 _Avoid_: frontend, display app, client app
 
+**Device Surface**:
+The rendered touchscreen experience inside the **Device UI** that presents device state, prompts, responses, and standby visuals.
+_Avoid_: theme, skin, frontend
+
+**Device Surface Plugin**:
+An installable **Device Surface** implementation that changes the **Device UI** presentation without owning runtime communication.
+_Avoid_: Device UI plugin, Brain Server plugin, page template
+
+**Surface Host Contract**:
+The boundary of state, actions, and capabilities that the **Device UI** exposes to a **Device Surface Plugin**.
+_Avoid_: internal client access, plugin SDK, backend API
+
+**Surface Settings**:
+Per-device configuration for a **Device Surface Plugin** that the **Brain Server** stores and the **Device UI** passes through the **Surface Host Contract**.
+_Avoid_: app config, global theme options, local preferences
+
+**Active Device Surface**:
+The **Device Surface** selected by the **Brain Server** for one **Device UI** to render.
+_Avoid_: boot theme, temporary display mode, selected plugin
+
+**Device Surface Acquisition**:
+The process where a **Device UI** obtains a missing **Device Surface Plugin** authorized by the **Brain Server**.
+_Avoid_: browser download, manual install, theme sync
+
 **Brain Server**:
 The local Nexus service that owns assistant orchestration, AI provider access, and device communication.
 _Avoid_: backend, API, server
@@ -84,6 +108,18 @@ _Avoid_: smoke check, fast check
 
 - A **Device UI** talks to exactly one **Brain Server** at a time.
 - A **Brain Server** can serve one or more **Device UIs**.
+- A **Device UI** renders exactly one active **Device Surface** at a time.
+- A **Device Surface Plugin** provides a **Device Surface** and does not talk directly to the **Brain Server**.
+- A **Device Surface Plugin** may fetch its own presentation data but can only use Nexus state and actions through the **Surface Host Contract**.
+- A **Device Surface** must preserve the **Prompt Exchange** interaction loop by providing a way to enter prompts and display results.
+- A **Device Surface Plugin** can define **Surface Settings** with defaults.
+- The **Brain Server** stores **Surface Settings** per **Device UI** and active **Device Surface**.
+- The **Brain Server** stores an **Active Device Surface** per **Device UI** so each device can change surfaces without a device power cycle.
+- The first **Device Surface Plugin** can be repo-provided before Brain-managed surface switching exists.
+- The **Brain Server** is the source of truth for which **Device Surface Plugins** are available and how a **Device UI** may acquire them.
+- A **Device UI** performs **Device Surface Acquisition** when its **Active Device Surface** is missing locally.
+- A **Device UI** automatically renders the current **Active Device Surface** when the **Brain Server** changes it.
+- A **Device UI** falls back to a built-in **Device Surface** and reports a **System Issue** only when **Device Surface Acquisition** or surface loading fails.
 - In the primary **Local Deployment**, the **Device UI** and **Brain Server** may run on separate machines.
 - A **Kiosk Deployment** runs the **Device UI** without requiring manual browser startup after boot.
 - A **Device Wake Phrase** is detected by a local **Device Runtime** and consumed by the **Device UI**, not the **Brain Server**.
@@ -109,6 +145,27 @@ _Avoid_: smoke check, fast check
 
 > **Dev:** "Should the **Device UI** call OpenAI directly?"
 > **Domain expert:** "No. The **Device UI** only talks to the **Brain Server**; provider access belongs behind the **Brain Server**."
+
+> **Dev:** "Can a **Device Surface Plugin** submit prompts to the **Brain Server** itself?"
+> **Domain expert:** "No. The **Device UI** owns runtime communication and passes state and actions into the active **Device Surface**."
+
+> **Dev:** "Can a **Device Surface Plugin** fetch weather or photo data for its own display?"
+> **Domain expert:** "Yes, if it stays within its own presentation needs and uses the **Surface Host Contract** for Nexus-specific state and actions."
+
+> **Dev:** "Can a visual-only **Device Surface** skip prompt input and assistant results?"
+> **Domain expert:** "No. Every **Device Surface** must preserve the **Prompt Exchange** interaction loop, even if its standby view is mostly visual."
+
+> **Dev:** "Should Nest Hub-style options be hard-coded into the **Device UI**?"
+> **Domain expert:** "No. They are **Surface Settings** defined by that **Device Surface Plugin** and stored by the **Brain Server** per device."
+
+> **Dev:** "Does the first **Device Surface Plugin** require runtime surface switching?"
+> **Domain expert:** "No. Runtime switching can follow after the repo-provided first plugin and **Surface Host Contract** exist."
+
+> **Dev:** "Should each device ask which **Device Surface** to use every time it starts?"
+> **Domain expert:** "No. The **Brain Server** stores that device's **Active Device Surface**, and the **Device UI** renders that choice automatically."
+
+> **Dev:** "What if the **Active Device Surface** is not installed on a device?"
+> **Domain expert:** "The **Device UI** performs **Device Surface Acquisition** using Brain-authorized plugin metadata before falling back."
 
 > **Dev:** "Is a prompt just a POST request?"
 > **Domain expert:** "No. The **Prompt Exchange** starts with an HTTP request, but live status and response updates can arrive over WebSocket."
@@ -146,6 +203,9 @@ _Avoid_: smoke check, fast check
 ## Flagged ambiguities
 
 - "Device UI" was clarified to mean the fullscreen touchscreen client, not AI orchestration, provider credentials, or skill execution.
+- "Device UI plugin" was clarified as **Device Surface Plugin**, meaning a replaceable rendered surface inside the **Device UI**, not a replacement client or Brain extension.
+- "Plugin isolation" was clarified to allow self-contained presentation behavior while requiring Nexus-specific state and actions to pass through the **Surface Host Contract**.
+- "Selected surface" was clarified as a per-device **Active Device Surface**, stored by the **Brain Server** rather than chosen manually on each device startup.
 - "AI provider flexibility" was clarified to mean provider calls are implemented behind the **Brain Server**, not exposed directly to UI apps.
 - "OpenAI provider" was clarified to mean OpenAI/Codex subscription authentication for v1, not an OpenAI Platform API key requirement.
 - "Prompt flow" was clarified as an HTTP plus WebSocket **Prompt Exchange**, not HTTP-only messaging.
