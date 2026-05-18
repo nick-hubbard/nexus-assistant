@@ -71,3 +71,5 @@ pnpm validate
 ```
 
 This runs linting, type validation, tests, and builds across the workspace.
+
+Pull requests into `main` and `develop` are protected by the GitHub Merge Gate policy. See [docs/github-protected-branches.md](docs/github-protected-branches.md) for the required branch protection settings and the `gh` setup script.
