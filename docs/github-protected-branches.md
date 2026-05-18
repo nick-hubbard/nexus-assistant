@@ -11,6 +11,7 @@ Configure branch protection or a ruleset for both `main` and `develop` with thes
 - Require status checks before merging.
 - Require branches to be up to date before merging.
 - Require the `Validate` status check from the `Merge Gate` GitHub Actions workflow.
+- Do not require approving reviews while the project has a single maintainer.
 - Do not allow force pushes.
 - Do not allow branch deletion.
 
@@ -21,6 +22,8 @@ pnpm validate
 ```
 
 `pnpm validate` runs linting, TypeScript validation, tests, and builds across the workspace.
+
+The policy intentionally does not require approving reviews while one person maintains the project. GitHub does not let a pull request author approve their own pull request, so requiring one approval would block all merges. Revisit this setting once a second maintainer can review pull requests.
 
 ## Apply With `gh`
 
@@ -55,9 +58,10 @@ If the script cannot be used, configure the same policy in GitHub:
 2. Go to **Rules > Rulesets** or **Branches > Branch protection rules**.
 3. Create a rule for `main`, then repeat it for `develop`.
 4. Enable pull request requirements before merge.
-5. Enable required status checks and select `Validate`.
-6. Enable the option that requires the branch to be up to date before merge.
-7. Disable force pushes and branch deletion.
-8. Save the rule.
+5. Leave required approving reviews disabled while the project has a single maintainer.
+6. Enable required status checks and select `Validate`.
+7. Enable the option that requires the branch to be up to date before merge.
+8. Disable force pushes and branch deletion.
+9. Save the rule.
 
 After saving, open a test pull request against each protected branch and confirm GitHub blocks merging until `Merge Gate / Validate` passes.
