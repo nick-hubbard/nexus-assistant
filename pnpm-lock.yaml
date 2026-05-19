@@ -29,6 +29,9 @@ importers:
 
   apps/brain:
     dependencies:
+      '@open-nexus/home-assistant-skill':
+        specifier: workspace:*
+        version: link:../../packages/home-assistant-skill
       '@open-nexus/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -106,6 +109,12 @@ importers:
       vitest:
         specifier: ^4.1.6
         version: 4.1.6(@types/node@25.8.0)(jsdom@29.1.1)(vite@8.0.13(@types/node@25.8.0)(esbuild@0.28.0)(tsx@4.22.1))
+
+  packages/home-assistant-skill:
+    dependencies:
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.3
 
   packages/merge-gate: {}
 
