@@ -24,7 +24,7 @@ import {
   type IssueReporter,
 } from "./issue-reporter.js";
 import { type AiProvider, AiProviderError } from "./provider.js";
-import { SkillHost } from "./skill-host.js";
+import { type SkillActionResult, SkillHost } from "./skill-host.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
@@ -105,6 +105,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
         interactionLog,
         provider,
         issueReporter,
+        skillHost,
         publish: (event) => publishEvent(sockets, event),
       });
     } catch (error) {
@@ -196,6 +197,7 @@ interface RunPromptExchangeOptions {
   interactionLog: InteractionLog;
   provider: AiProvider;
   issueReporter: IssueReporter;
+  skillHost: SkillHost;
   publish: (event: WebSocketEvent) => void;
 }
 
@@ -206,6 +208,7 @@ async function runPromptExchange({
   interactionLog,
   provider,
   issueReporter,
+  skillHost,
   publish,
 }: RunPromptExchangeOptions) {
   publish(
@@ -224,21 +227,16 @@ async function runPromptExchange({
   let sequence = 0;
 
   try {
-    for await (const chunk of provider.complete({ prompt })) {
-      response += chunk.delta;
-      publish(
-        WebSocketEventSchema.parse({
-          type: "prompt-exchange.delta",
-          promptExchangeId,
-          occurredAt: new Date().toISOString(),
-          payload: {
-            status: "streaming",
-            delta: chunk.delta,
-            sequence,
-          },
-        }),
-      );
-      sequence += 1;
+    const skillResult = await invokeSkillForPrompt(skillHost, prompt);
+    if (skillResult) {
+      response = skillResult.responseText ?? "Done.";
+      publishPromptDelta({ promptExchangeId, delta: response, sequence, publish });
+    } else {
+      for await (const chunk of provider.complete({ prompt })) {
+        response += chunk.delta;
+        publishPromptDelta({ promptExchangeId, delta: chunk.delta, sequence, publish });
+        sequence += 1;
+      }
     }
   } catch (error) {
     const occurredAt = new Date().toISOString();
@@ -290,6 +288,64 @@ async function runPromptExchange({
       payload: {
         status: "completed",
         response,
+      },
+    }),
+  );
+}
+
+async function invokeSkillForPrompt(
+  skillHost: SkillHost,
+  prompt: string,
+): Promise<SkillActionResult | undefined> {
+  const action = homeAssistantActionForPrompt(prompt);
+  if (!action) {
+    return undefined;
+  }
+
+  const installedSkills = await skillHost.discover();
+  const homeAssistantSkill = installedSkills.find(
+    (skill) => skill.manifest.id === "home-assistant",
+  );
+  if (!homeAssistantSkill) {
+    return undefined;
+  }
+
+  return skillHost.invoke(homeAssistantSkill.manifest.id, {
+    action,
+    input: { prompt },
+    configuration: {
+      baseUrl: process.env.HOME_ASSISTANT_BASE_URL ?? "http://homeassistant.local:8123",
+      accessToken: process.env.HOME_ASSISTANT_ACCESS_TOKEN,
+    },
+  });
+}
+
+function homeAssistantActionForPrompt(prompt: string) {
+  const normalized = prompt.toLowerCase();
+  if (/\bturn\s+off\b/.test(normalized) && /\blights?\b/.test(normalized)) {
+    return "turn-off";
+  }
+  if (/\bturn\s+on\b/.test(normalized) && /\blights?\b/.test(normalized)) {
+    return "turn-on";
+  }
+  return undefined;
+}
+
+function publishPromptDelta(options: {
+  promptExchangeId: string;
+  delta: string;
+  sequence: number;
+  publish: (event: WebSocketEvent) => void;
+}) {
+  options.publish(
+    WebSocketEventSchema.parse({
+      type: "prompt-exchange.delta",
+      promptExchangeId: options.promptExchangeId,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        status: "streaming",
+        delta: options.delta,
+        sequence: options.sequence,
       },
     }),
   );
