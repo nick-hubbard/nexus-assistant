@@ -2,6 +2,84 @@ import { describe, expect, it } from "vitest";
 import { HomeAssistantSkill } from "../src/home-assistant-skill.js";
 
 describe("Home Assistant Skill", () => {
+  it("discovers entities with natural-language resolution context", async () => {
+    const skill = new HomeAssistantSkill(async () =>
+      jsonResponse([
+        {
+          entity_id: "light.kitchen",
+          state: "on",
+          attributes: {
+            friendly_name: "Kitchen lights",
+            area: "Kitchen",
+            area_id: "kitchen",
+          },
+        },
+      ]),
+    );
+
+    const result = await skill.invoke({
+      action: "discover-entities",
+      input: {},
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      responseText: "I found 1 Home Assistant entities.",
+      data: {
+        entities: [
+          {
+            entityId: "light.kitchen",
+            domain: "light",
+            state: "on",
+            friendlyName: "Kitchen lights",
+            area: "Kitchen",
+            areaId: "kitchen",
+          },
+        ],
+      },
+    });
+  });
+
+  it("reads current entity state by area and friendly name", async () => {
+    const skill = new HomeAssistantSkill(async () =>
+      jsonResponse([
+        {
+          entity_id: "light.kitchen",
+          state: "on",
+          attributes: { friendly_name: "Kitchen lights", area: "Kitchen" },
+        },
+        {
+          entity_id: "light.living_room",
+          state: "off",
+          attributes: { friendly_name: "Living room lights", area: "Living Room" },
+        },
+      ]),
+    );
+
+    const result = await skill.invoke({
+      action: "read-state",
+      input: { prompt: "are the kitchen lights on?" },
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      responseText: "Kitchen lights is on.",
+      data: {
+        entities: [
+          {
+            entityId: "light.kitchen",
+            domain: "light",
+            state: "on",
+            friendlyName: "Kitchen lights",
+            area: "Kitchen",
+          },
+        ],
+      },
+    });
+  });
+
   it("discovers light entities by friendly name and calls the turn-off service", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     const skill = new HomeAssistantSkill(async (url, init) => {

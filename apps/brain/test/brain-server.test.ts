@@ -209,6 +209,67 @@ describe("Brain Server", () => {
     ]);
   });
 
+  it('routes "are the kitchen lights on?" Prompt Exchanges through Home Assistant state reads', async () => {
+    const dataDir = await createDataDir();
+    await writeHomeAssistantSkillPackage(dataDir);
+    const skillRequests: unknown[] = [];
+    const brain = await startBrainServer({
+      dataDir,
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
+      }),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 3);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "are the kitchen lights on?",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const accepted = PromptExchangeAcceptedSchema.parse(await response.json());
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.delta",
+      "prompt-exchange.completed",
+    ]);
+    expect(events[1]).toMatchObject({
+      promptExchangeId: accepted.promptExchangeId,
+      payload: {
+        status: "streaming",
+        delta: "Kitchen lights is on.",
+        sequence: 0,
+      },
+    });
+    expect(events[2]).toMatchObject({
+      payload: {
+        status: "completed",
+        response: "Kitchen lights is on.",
+      },
+    });
+    expect(skillRequests).toEqual([
+      {
+        action: "read-state",
+        input: { prompt: "are the kitchen lights on?" },
+        configuration: {
+          baseUrl: "http://homeassistant.local:8123",
+          accessToken: undefined,
+        },
+      },
+    ]);
+  });
+
   it("records and reports System Issues from the Device UI", async () => {
     const issueReporter = new FakeIssueReporter();
     const brain = await startBrainServer({ issueReporter });
@@ -432,6 +493,23 @@ function fakeHomeAssistantAdapter(requests: unknown[]): SkillAdapter {
   return {
     invoke: (request) => {
       requests.push(request);
+      if (request.action === "read-state") {
+        return {
+          status: "succeeded",
+          responseText: "Kitchen lights is on.",
+          data: {
+            entities: [
+              {
+                entityId: "light.kitchen",
+                domain: "light",
+                state: "on",
+                friendlyName: "Kitchen lights",
+                area: "Kitchen",
+              },
+            ],
+          },
+        };
+      }
       return {
         status: "succeeded",
         responseText: "Done, I turned off Kitchen lights.",

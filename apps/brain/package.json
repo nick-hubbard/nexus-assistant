@@ -2,6 +2,9 @@
   "name": "@open-nexus/brain",
   "private": true,
   "type": "module",
+  "bin": {
+    "nexus": "./src/cli.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

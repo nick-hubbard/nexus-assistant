@@ -322,6 +322,9 @@ async function invokeSkillForPrompt(
 
 function homeAssistantActionForPrompt(prompt: string) {
   const normalized = prompt.toLowerCase();
+  if (/\b(?:are|is|what(?:'s| is)?)\b/.test(normalized) && /\blights?\b/.test(normalized)) {
+    return "read-state";
+  }
   if (/\bturn\s+off\b/.test(normalized) && /\blights?\b/.test(normalized)) {
     return "turn-off";
   }

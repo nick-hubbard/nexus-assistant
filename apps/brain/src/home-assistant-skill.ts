@@ -84,13 +84,38 @@ export class HomeAssistantSkill implements SkillAdapter {
 
     const input = ActionInputSchema.parse(request.input);
     const states = await this.fetchStates(configuration.data);
-    const targets = resolveTargets(states, mappedAction.domain, input);
+    const discoveredEntities = discoverEntities(states);
+
+    if (mappedAction.kind === "discover") {
+      return {
+        status: "succeeded",
+        responseText: `I found ${discoveredEntities.length} Home Assistant entities.`,
+        data: { entities: discoveredEntities },
+      };
+    }
+
+    const domain = mappedAction.domain ?? inferDomain(input, states);
+    if (!domain) {
+      return failed(
+        "I could not determine which Home Assistant entity type to read.",
+        "entity-domain-not-found",
+      );
+    }
+
+    const targets = resolveTargets(states, domain, input);
 
     if (targets.length === 0) {
-      return failed(
-        `I could not find a matching ${mappedAction.domain} in Home Assistant.`,
-        "entity-not-found",
-      );
+      return failed(`I could not find a matching ${domain} in Home Assistant.`, "entity-not-found");
+    }
+
+    if (mappedAction.kind === "read") {
+      return {
+        status: "succeeded",
+        responseText: readStateResponseText(targets),
+        data: {
+          entities: targets.map(entityContextForState),
+        },
+      };
     }
 
     const serviceData: Record<string, unknown> = {
@@ -113,7 +138,7 @@ export class HomeAssistantSkill implements SkillAdapter {
       status: "succeeded",
       responseText: responseTextFor(mappedAction, targets),
       data: {
-        domain: mappedAction.domain,
+        domain,
         service: mappedAction.service,
         entityIds: targets.map((target) => target.entity_id),
       },
@@ -152,32 +177,39 @@ export class HomeAssistantSkill implements SkillAdapter {
 }
 
 interface MappedAction {
-  domain: SupportedDomain;
-  service: string;
+  kind: "control" | "discover" | "read";
+  domain?: SupportedDomain;
+  service?: string;
 }
 
 function mapAction(action: string): MappedAction | undefined {
   const normalized = normalize(action);
+  if (["discover-entities", "discover_entities", "entities"].includes(normalized)) {
+    return { kind: "discover" };
+  }
+  if (["read-state", "read_state", "state"].includes(normalized)) {
+    return { kind: "read" };
+  }
   if (["turn-off", "turn_off", "off"].includes(normalized)) {
-    return { domain: "light", service: "turn_off" };
+    return { kind: "control", domain: "light", service: "turn_off" };
   }
   if (["turn-on", "turn_on", "on"].includes(normalized)) {
-    return { domain: "light", service: "turn_on" };
+    return { kind: "control", domain: "light", service: "turn_on" };
   }
   if (["switch-off", "switch_off"].includes(normalized)) {
-    return { domain: "switch", service: "turn_off" };
+    return { kind: "control", domain: "switch", service: "turn_off" };
   }
   if (["switch-on", "switch_on"].includes(normalized)) {
-    return { domain: "switch", service: "turn_on" };
+    return { kind: "control", domain: "switch", service: "turn_on" };
   }
   if (["activate-scene", "scene-on"].includes(normalized)) {
-    return { domain: "scene", service: "turn_on" };
+    return { kind: "control", domain: "scene", service: "turn_on" };
   }
   if (["run-script", "script-on"].includes(normalized)) {
-    return { domain: "script", service: "turn_on" };
+    return { kind: "control", domain: "script", service: "turn_on" };
   }
   if (["set-temperature", "climate-temperature"].includes(normalized)) {
-    return { domain: "climate", service: "set_temperature" };
+    return { kind: "control", domain: "climate", service: "set_temperature" };
   }
   return undefined;
 }
@@ -195,7 +227,12 @@ function resolveTargets(
   const searchTerms = [input.area, input.name, input.prompt].filter((term): term is string =>
     Boolean(term),
   );
-  if (searchTerms.length === 0 || searchTerms.some((term) => /\ball\b|\blights?\b/i.test(term))) {
+  if (searchTerms.length === 0 || searchTerms.some((term) => /\ball\b/i.test(term))) {
+    return domainStates;
+  }
+
+  const meaningfulWords = searchTerms.flatMap(meaningfulEntityWords);
+  if (meaningfulWords.length === 0) {
     return domainStates;
   }
 
@@ -210,8 +247,79 @@ function resolveTargets(
         .filter(Boolean)
         .join(" "),
     );
-    return searchTerms.some((term) => haystack.includes(normalize(term)));
+    return meaningfulWords.every((term) => haystack.includes(term));
   });
+}
+
+function discoverEntities(states: HomeAssistantState[]) {
+  return states.map(entityContextForState);
+}
+
+function entityContextForState(state: HomeAssistantState) {
+  return {
+    entityId: state.entity_id,
+    domain: state.entity_id.split(".")[0],
+    state: state.state,
+    friendlyName: state.attributes.friendly_name,
+    area: state.attributes.area,
+    areaId: state.attributes.area_id,
+  };
+}
+
+function inferDomain(input: z.infer<typeof ActionInputSchema>, states: HomeAssistantState[]) {
+  if (input.entityId) {
+    const domain = input.entityId.split(".")[0];
+    return SupportedDomainSchema.safeParse(domain).success
+      ? (domain as SupportedDomain)
+      : undefined;
+  }
+
+  const haystack = normalize([input.area, input.name, input.prompt].filter(Boolean).join(" "));
+  if (/\blights?\b/.test(haystack)) {
+    return "light";
+  }
+  if (/\bswitch(?:es)?\b/.test(haystack)) {
+    return "switch";
+  }
+  if (/\bclimate\b|\bthermostat\b|\btemperature\b/.test(haystack)) {
+    return "climate";
+  }
+
+  const matchingDomains = states
+    .map((state) => state.entity_id.split(".")[0])
+    .filter((domain): domain is SupportedDomain => SupportedDomainSchema.safeParse(domain).success);
+  return matchingDomains.length === 1 ? matchingDomains[0] : undefined;
+}
+
+function meaningfulEntityWords(term: string) {
+  return term
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(
+      (word) =>
+        word.length > 0 &&
+        !new Set([
+          "a",
+          "an",
+          "are",
+          "is",
+          "the",
+          "to",
+          "turn",
+          "set",
+          "read",
+          "what",
+          "on",
+          "off",
+          "state",
+          "status",
+          "light",
+          "lights",
+          "switch",
+          "switches",
+        ]).has(word),
+    );
 }
 
 function headersFor(configuration: z.infer<typeof ConfigurationSchema>) {
@@ -237,6 +345,21 @@ function describeAction(action: MappedAction) {
     return `turn on the ${action.domain}`;
   }
   return `update the ${action.domain}`;
+}
+
+function readStateResponseText(targets: HomeAssistantState[]) {
+  if (targets.length === 1) {
+    const target = targets[0];
+    if (!target) {
+      return "I could not find a matching Home Assistant entity.";
+    }
+    return `${target.attributes.friendly_name ?? target.entity_id} is ${target.state}.`;
+  }
+
+  const states = targets
+    .map((target) => `${target.attributes.friendly_name ?? target.entity_id} is ${target.state}`)
+    .join(", ");
+  return states.endsWith(".") ? states : `${states}.`;
 }
 
 function pastTense(action: MappedAction) {
