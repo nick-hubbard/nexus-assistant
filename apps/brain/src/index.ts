@@ -11,6 +11,7 @@ import {
 } from "@open-nexus/protocol";
 import express from "express";
 import { type WebSocket, WebSocketServer } from "ws";
+import { AssistantOrchestrator } from "./assistant-orchestrator.js";
 import { initializeBrainFiles } from "./brain-files.js";
 import { CodexCliProvider } from "./codex-provider.js";
 import type { BrainConfig } from "./config.js";
@@ -24,7 +25,7 @@ import {
   type IssueReporter,
 } from "./issue-reporter.js";
 import { type AiProvider, AiProviderError } from "./provider.js";
-import { type SkillActionResult, SkillHost } from "./skill-host.js";
+import { SkillHost } from "./skill-host.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
@@ -227,9 +228,20 @@ async function runPromptExchange({
   let sequence = 0;
 
   try {
-    const skillResult = await invokeSkillForPrompt(skillHost, prompt);
-    if (skillResult) {
-      response = skillResult.responseText ?? "Done.";
+    const orchestrator = new AssistantOrchestrator({ provider, skillHost });
+    const orchestratorResult = await orchestrator.invokeForPrompt(prompt);
+    if (orchestratorResult) {
+      response =
+        orchestratorResult.result.responseText ??
+        orchestratorResult.result.error?.message ??
+        "Done.";
+      interactionLog.recordSkillInvocation({
+        promptExchangeId,
+        deviceId,
+        skillId: orchestratorResult.skillId,
+        action: orchestratorResult.action,
+        status: orchestratorResult.result.status,
+      });
       publishPromptDelta({ promptExchangeId, delta: response, sequence, publish });
     } else {
       for await (const chunk of provider.complete({ prompt })) {
@@ -291,47 +303,6 @@ async function runPromptExchange({
       },
     }),
   );
-}
-
-async function invokeSkillForPrompt(
-  skillHost: SkillHost,
-  prompt: string,
-): Promise<SkillActionResult | undefined> {
-  const action = homeAssistantActionForPrompt(prompt);
-  if (!action) {
-    return undefined;
-  }
-
-  const installedSkills = await skillHost.discover();
-  const homeAssistantSkill = installedSkills.find(
-    (skill) => skill.manifest.id === "home-assistant",
-  );
-  if (!homeAssistantSkill) {
-    return undefined;
-  }
-
-  return skillHost.invoke(homeAssistantSkill.manifest.id, {
-    action,
-    input: { prompt },
-    configuration: {
-      baseUrl: process.env.HOME_ASSISTANT_BASE_URL ?? "http://homeassistant.local:8123",
-      accessToken: process.env.HOME_ASSISTANT_ACCESS_TOKEN,
-    },
-  });
-}
-
-function homeAssistantActionForPrompt(prompt: string) {
-  const normalized = prompt.toLowerCase();
-  if (/\b(?:are|is|what(?:'s| is)?)\b/.test(normalized) && /\blights?\b/.test(normalized)) {
-    return "read-state";
-  }
-  if (/\bturn\s+off\b/.test(normalized) && /\blights?\b/.test(normalized)) {
-    return "turn-off";
-  }
-  if (/\bturn\s+on\b/.test(normalized) && /\blights?\b/.test(normalized)) {
-    return "turn-on";
-  }
-  return undefined;
 }
 
 function publishPromptDelta(options: {

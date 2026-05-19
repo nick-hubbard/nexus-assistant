@@ -148,12 +148,23 @@ describe("Brain Server", () => {
     expect(issueReporter.reports).toEqual([]);
   });
 
-  it('routes "turn off the lights" Prompt Exchanges through the Home Assistant Skill', async () => {
+  it("routes Prompt Exchanges through a Skill selected from manifest capabilities", async () => {
     const dataDir = await createDataDir();
     await writeHomeAssistantSkillPackage(dataDir);
     const skillRequests: unknown[] = [];
+    const provider = new QueueProvider([
+      JSON.stringify({
+        skillId: "home-assistant",
+        action: "turn-off",
+        input: { prompt: "turn off the lights" },
+        configuration: {
+          baseUrl: "http://homeassistant.local:8123",
+        },
+      }),
+    ]);
     const brain = await startBrainServer({
       dataDir,
+      provider,
       skillHost: new SkillHost({
         dataDir,
         loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
@@ -203,21 +214,40 @@ describe("Brain Server", () => {
         input: { prompt: "turn off the lights" },
         configuration: {
           baseUrl: "http://homeassistant.local:8123",
-          accessToken: undefined,
         },
       },
     ]);
+    expect(provider.prompts[0]).toContain("Installed Skill Manifests");
+    expect(provider.prompts[0]).toContain("home-assistant.control");
+
+    const loggedEvents = brain.interactionLog.allEvents();
+    expect(loggedEvents.map((event) => event.type)).toEqual([
+      "prompt.requested",
+      "skill.invocation",
+      "provider.response",
+    ]);
+    expect(JSON.parse(String(loggedEvents[1]?.payload_json))).toMatchObject({
+      skillId: "home-assistant",
+      action: "turn-off",
+      status: "succeeded",
+    });
   });
 
-  it('routes "are the kitchen lights on?" Prompt Exchanges through Home Assistant state reads', async () => {
+  it("keeps ordinary prompts on the AI Provider response path when no Skill is selected", async () => {
     const dataDir = await createDataDir();
     await writeHomeAssistantSkillPackage(dataDir);
-    const skillRequests: unknown[] = [];
+    const provider = new QueueProvider([
+      JSON.stringify({ skillId: null, action: null }),
+      "Ordinary answer.",
+    ]);
     const brain = await startBrainServer({
       dataDir,
+      provider,
       skillHost: new SkillHost({
         dataDir,
-        loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
+        loadAdapter: async () => {
+          throw new Error("Skill should not load for ordinary prompts.");
+        },
       }),
     });
     const socket = await connectEvents(brain);
@@ -230,7 +260,7 @@ describe("Brain Server", () => {
       },
       body: JSON.stringify({
         deviceId: "dev_kitchen-display",
-        prompt: "are the kitchen lights on?",
+        prompt: "What is next?",
         requestedAt: new Date().toISOString(),
       }),
     });
@@ -248,25 +278,139 @@ describe("Brain Server", () => {
       promptExchangeId: accepted.promptExchangeId,
       payload: {
         status: "streaming",
-        delta: "Kitchen lights is on.",
+        delta: "Ordinary answer.",
         sequence: 0,
       },
     });
     expect(events[2]).toMatchObject({
       payload: {
         status: "completed",
-        response: "Kitchen lights is on.",
+        response: "Ordinary answer.",
       },
     });
-    expect(skillRequests).toEqual([
-      {
-        action: "read-state",
-        input: { prompt: "are the kitchen lights on?" },
-        configuration: {
-          baseUrl: "http://homeassistant.local:8123",
-          accessToken: undefined,
+    expect(provider.prompts).toHaveLength(2);
+  });
+
+  it("publishes Skill refusal responses without invoking disabled actions", async () => {
+    const dataDir = await createDataDir();
+    await writeHomeAssistantSkillPackage(dataDir, {
+      safetyDefaults: {
+        confirmation: "not-required",
+        disabledActions: ["turn-off"],
+      },
+    });
+    const skillRequests: unknown[] = [];
+    const brain = await startBrainServer({
+      dataDir,
+      provider: new QueueProvider([
+        JSON.stringify({
+          skillId: "home-assistant",
+          action: "turn-off",
+          input: { prompt: "turn off the lights" },
+        }),
+      ]),
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
+      }),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 3);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "turn off the lights",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.delta",
+      "prompt-exchange.completed",
+    ]);
+    expect(events[1]?.payload).toMatchObject({
+      status: "streaming",
+      delta: "That Skill action is disabled by its Skill Safety Policy.",
+    });
+    expect(skillRequests).toEqual([]);
+    expect(JSON.parse(String(brain.interactionLog.allEvents()[1]?.payload_json))).toMatchObject({
+      skillId: "home-assistant",
+      action: "turn-off",
+      status: "refused",
+    });
+  });
+
+  it("records and reports Skill runtime failures during Prompt Exchanges", async () => {
+    const issueReporter = new FakeIssueReporter();
+    const dataDir = await createDataDir();
+    await writeHomeAssistantSkillPackage(dataDir);
+    const brain = await startBrainServer({
+      dataDir,
+      issueReporter,
+      provider: new QueueProvider([
+        JSON.stringify({
+          skillId: "home-assistant",
+          action: "turn-off",
+          input: { prompt: "turn off the lights" },
+        }),
+      ]),
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => ({
+          invoke: () => {
+            throw new Error("Skill adapter crashed.");
+          },
+        }),
+      }),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 2);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "turn off the lights",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const accepted = PromptExchangeAcceptedSchema.parse(await response.json());
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.failed",
+    ]);
+    expect(events[1]).toMatchObject({
+      promptExchangeId: accepted.promptExchangeId,
+      payload: {
+        status: "failed",
+        systemIssue: {
+          source: "brain-server",
+          category: "runtime",
+          message: "Skill adapter crashed.",
         },
       },
+    });
+    expect(issueReporter.reports).toHaveLength(1);
+    expect(brain.interactionLog.allEvents().map((event) => event.type)).toEqual([
+      "prompt.requested",
+      "runtime.error",
+      "system-issue.reported",
     ]);
   });
 
@@ -457,7 +601,10 @@ function collectMessages(socket: WebSocket, count: number) {
   });
 }
 
-async function writeHomeAssistantSkillPackage(dataDir: string) {
+async function writeHomeAssistantSkillPackage(
+  dataDir: string,
+  overrides: Record<string, unknown> = {},
+) {
   const packagePath = path.join(installedSkillsDirForDataDir(dataDir), "home-assistant");
   await mkdir(packagePath, { recursive: true });
   await writeFile(path.join(packagePath, "adapter.js"), "export default {};\n");
@@ -473,8 +620,8 @@ async function writeHomeAssistantSkillPackage(dataDir: string) {
           id: "home-assistant.control",
           title: "Control Home Assistant",
           description: "Controls Home Assistant entities.",
-          actions: ["turn-on", "turn-off"],
-          examples: ["turn off the lights"],
+          actions: ["turn-on", "turn-off", "read-state"],
+          examples: ["turn off the lights", "are the kitchen lights on?"],
         },
       ],
       configurationSchema: {
@@ -485,6 +632,7 @@ async function writeHomeAssistantSkillPackage(dataDir: string) {
           accessToken: { type: "string" },
         },
       },
+      ...overrides,
     }),
   );
 }
@@ -524,6 +672,20 @@ class FakeIssueReporter implements IssueReporter {
 
   async report(issueReport: IssueReport) {
     this.reports.push(issueReport);
+  }
+}
+
+class QueueProvider implements AiProvider {
+  readonly name = "queue-provider";
+  readonly prompts: string[] = [];
+  private responseIndex = 0;
+
+  constructor(private readonly responses: string[]) {}
+
+  async *complete({ prompt }: { prompt: string }) {
+    this.prompts.push(prompt);
+    yield { delta: this.responses[this.responseIndex] ?? "" };
+    this.responseIndex += 1;
   }
 }
 

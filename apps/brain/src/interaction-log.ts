@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 export type InteractionLogEventType =
   | "prompt.requested"
   | "provider.response"
+  | "skill.invocation"
   | "system-issue.reported"
   | "runtime.error";
 
@@ -53,6 +54,35 @@ export class InteractionLog {
       type: "provider.response",
       occurredAt: options.occurredAt,
       payload: { response: options.response },
+    });
+  }
+
+  recordSkillInvocation(options: {
+    promptExchangeId: string;
+    deviceId: string;
+    skillId: string;
+    action: string;
+    status: string;
+    occurredAt?: string;
+    error?: unknown;
+  }) {
+    this.record({
+      correlationId: options.promptExchangeId,
+      promptExchangeId: options.promptExchangeId,
+      deviceId: options.deviceId,
+      type: "skill.invocation",
+      occurredAt: options.occurredAt,
+      payload: {
+        skillId: options.skillId,
+        action: options.action,
+        status: options.status,
+        ...(options.error === undefined
+          ? {}
+          : {
+              error:
+                options.error instanceof Error ? { message: options.error.message } : options.error,
+            }),
+      },
     });
   }
 
