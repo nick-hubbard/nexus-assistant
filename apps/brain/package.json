@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@open-nexus/home-assistant-skill": "workspace:*",
     "@open-nexus/protocol": "workspace:*",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",

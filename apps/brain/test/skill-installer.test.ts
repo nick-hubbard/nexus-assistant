@@ -26,6 +26,21 @@ describe("Skill installer", () => {
     ).resolves.toContain("fake-light-skill");
   });
 
+  it("installs the repository Home Assistant Skill package", async () => {
+    const dataDir = await createDataDir();
+    const packagePath = path.resolve("../../packages/home-assistant-skill");
+
+    const installed = await installSkill(packagePath, { dataDir });
+
+    expect(installed).toEqual({
+      id: "home-assistant",
+      packagePath: path.join(installedSkillsDirForDataDir(dataDir), "home-assistant"),
+    });
+    await expect(
+      readFile(path.join(installed.packagePath, "skill.json"), "utf8"),
+    ).resolves.toContain("accessTokenRef");
+  });
+
   it("resolves a Skill Registry mapping before installing", async () => {
     const dataDir = await createDataDir();
     const packagePath = await writeSkillPackage("registry-light-skill");

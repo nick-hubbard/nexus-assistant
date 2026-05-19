@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HomeAssistantSkill } from "../src/home-assistant-skill.js";
+import { HomeAssistantSkill } from "../src/index.js";
 
 describe("Home Assistant Skill", () => {
   it("discovers entities with natural-language resolution context", async () => {
@@ -81,9 +81,9 @@ describe("Home Assistant Skill", () => {
   });
 
   it("discovers light entities by friendly name and calls the turn-off service", async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
     const skill = new HomeAssistantSkill(async (url, init) => {
-      requests.push(init ? { url: String(url), init } : { url: String(url) });
+      requests.push({ url: String(url), init });
       if (String(url).endsWith("/api/states")) {
         return jsonResponse([
           {
@@ -162,6 +162,45 @@ describe("Home Assistant Skill", () => {
       status: "refused",
       error: { code: "confirmation-required" },
     });
+  });
+
+  it("validates configuration by calling a Home Assistant-compatible config endpoint", async () => {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const skill = new HomeAssistantSkill(async (url, init) => {
+      requests.push({ url: String(url), init });
+      return jsonResponse({ version: "2026.5.0" });
+    });
+
+    await expect(
+      skill.validateConfiguration({
+        baseUrl: "http://ha.local:8123/",
+        accessToken: "token",
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(requests).toMatchObject([
+      {
+        url: "http://ha.local:8123/api/config",
+        init: {
+          headers: {
+            authorization: "Bearer token",
+          },
+        },
+      },
+    ]);
+  });
+
+  it("rejects invalid configuration before contacting Home Assistant", async () => {
+    let requestCount = 0;
+    const skill = new HomeAssistantSkill(async () => {
+      requestCount += 1;
+      return jsonResponse({});
+    });
+
+    await expect(skill.validateConfiguration({ baseUrl: "ha.local:8123" })).resolves.toEqual({
+      ok: false,
+      message: "Home Assistant configuration is invalid.",
+    });
+    expect(requestCount).toBe(0);
   });
 });
 
