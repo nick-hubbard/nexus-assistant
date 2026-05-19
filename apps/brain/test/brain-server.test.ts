@@ -56,6 +56,16 @@ describe("Brain Server", () => {
     });
   });
 
+  it("owns a local Skill Host rooted in Brain data", async () => {
+    const dataDir = await createDataDir();
+    const brain = createBrainServer({
+      config: createTestConfig({ dataDir }),
+    });
+    openServers.push(brain);
+
+    await expect(brain.skillHost.discover()).resolves.toEqual([]);
+  });
+
   it("allows browser prompt submissions from the Device UI", async () => {
     const brain = await startBrainServer();
 

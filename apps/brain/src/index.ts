@@ -24,12 +24,14 @@ import {
   type IssueReporter,
 } from "./issue-reporter.js";
 import { type AiProvider, AiProviderError } from "./provider.js";
+import { SkillHost } from "./skill-host.js";
 
 interface BrainServerOptions {
   config?: BrainConfig;
   provider?: AiProvider;
   interactionLog?: InteractionLog;
   issueReporter?: IssueReporter;
+  skillHost?: SkillHost;
 }
 
 export function createBrainServer(options: BrainServerOptions = {}) {
@@ -37,6 +39,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
   const provider = options.provider ?? createAiProvider(config);
   const interactionLog = options.interactionLog ?? new InteractionLog(config.dataDir);
   const issueReporter = options.issueReporter ?? createIssueReporter(config.discordWebhookUrl);
+  const skillHost = options.skillHost ?? new SkillHost({ dataDir: config.dataDir });
   const app = express();
   const server = http.createServer(app);
   const events = new WebSocketServer({ noServer: true });
@@ -155,6 +158,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
     events,
     config,
     interactionLog,
+    skillHost,
     initialize: () => initializeBrainFiles(config.dataDir),
     close: async () => {
       await new Promise<void>((resolve, reject) => {
