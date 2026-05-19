@@ -14,6 +14,9 @@ export function DeviceClient() {
   const activeDeviceSurface = nestHubDeviceSurfacePlugin;
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const promptExchangeIdRef = useRef<string | undefined>(undefined);
+  const promptRef = useRef("");
+  const promptStateRef = useRef<PromptState>("idle");
+  const voicePromptExchangeIdRef = useRef<string | undefined>(undefined);
   const [assistantResponse, setAssistantResponse] = useState("");
   const [connected, setConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => formatCurrentTime());
@@ -30,6 +33,53 @@ export function DeviceClient() {
   const wakePromptComposer = useCallback(() => {
     setPromptComposerVisible(true);
   }, []);
+
+  useEffect(() => {
+    promptRef.current = prompt;
+  }, [prompt]);
+
+  useEffect(() => {
+    promptStateRef.current = promptState;
+  }, [promptState]);
+
+  const submitPrompt = useCallback(
+    async (promptOverride?: string, options: { spokenResponse?: boolean } = {}) => {
+      const trimmedPrompt = (promptOverride ?? promptRef.current).trim();
+      const currentPromptState = promptStateRef.current;
+
+      if (
+        !trimmedPrompt ||
+        currentPromptState === "sending" ||
+        currentPromptState === "streaming"
+      ) {
+        return;
+      }
+
+      setAssistantResponse("");
+      setErrorMessage(undefined);
+      setPromptState("sending");
+
+      try {
+        const accepted = await client.submitPrompt({
+          deviceId,
+          prompt: trimmedPrompt,
+          requestedAt: new Date().toISOString(),
+          context: {
+            locale: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+        });
+        promptExchangeIdRef.current = accepted.promptExchangeId;
+        if (options.spokenResponse) {
+          voicePromptExchangeIdRef.current = accepted.promptExchangeId;
+        }
+      } catch (error) {
+        setPromptState("failed");
+        setErrorMessage(error instanceof Error ? error.message : "Prompt submission failed.");
+      }
+    },
+    [client],
+  );
 
   useEffect(() => {
     if (!isDevelopmentDeviceUiMode()) {
@@ -50,8 +100,20 @@ export function DeviceClient() {
   useEffect(() => {
     return deviceRuntimeClient.connect({
       onWakePhraseDetected: wakePromptComposer,
+      onSpeechCaptureStarted: () => {
+        wakePromptComposer();
+        setPrompt("");
+        setAssistantResponse("Listening...");
+        setErrorMessage(undefined);
+        setPromptState("idle");
+      },
+      onSpeechTranscribed: (event) => {
+        wakePromptComposer();
+        setPrompt(event.transcript);
+        void submitPrompt(event.transcript, { spokenResponse: true });
+      },
     });
-  }, [deviceRuntimeClient, wakePromptComposer]);
+  }, [deviceRuntimeClient, submitPrompt, wakePromptComposer]);
 
   useEffect(() => {
     if (promptComposerVisible) {
@@ -100,43 +162,22 @@ export function DeviceClient() {
         if (event.type === "prompt-exchange.completed") {
           setPromptState("completed");
           setAssistantResponse(event.payload.response);
+          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
+            speakAssistantResponse(event.payload.response);
+            voicePromptExchangeIdRef.current = undefined;
+          }
         }
 
         if (event.type === "prompt-exchange.failed") {
           setPromptState("failed");
           setErrorMessage(event.payload.systemIssue.message);
+          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
+            voicePromptExchangeIdRef.current = undefined;
+          }
         }
       },
     });
   }, [client]);
-
-  async function submitPrompt() {
-    const trimmedPrompt = prompt.trim();
-
-    if (!trimmedPrompt || promptState === "sending" || promptState === "streaming") {
-      return;
-    }
-
-    setAssistantResponse("");
-    setErrorMessage(undefined);
-    setPromptState("sending");
-
-    try {
-      const accepted = await client.submitPrompt({
-        deviceId,
-        prompt: trimmedPrompt,
-        requestedAt: new Date().toISOString(),
-        context: {
-          locale: navigator.language,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-      });
-      promptExchangeIdRef.current = accepted.promptExchangeId;
-    } catch (error) {
-      setPromptState("failed");
-      setErrorMessage(error instanceof Error ? error.message : "Prompt submission failed.");
-    }
-  }
 
   const ActiveDeviceSurface = activeDeviceSurface.Surface;
 
@@ -182,4 +223,13 @@ function getDeviceLocale() {
 
 function getDeviceTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function speakAssistantResponse(response: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(response));
 }

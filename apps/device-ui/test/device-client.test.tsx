@@ -18,10 +18,20 @@ const connect = vi.fn((handlers: BrainHandlers) => {
   return vi.fn();
 });
 let onWakePhraseDetected: (() => void) | undefined;
-const connectDeviceRuntime = vi.fn((handlers: { onWakePhraseDetected: () => void }) => {
-  onWakePhraseDetected = handlers.onWakePhraseDetected;
-  return vi.fn();
-});
+let onSpeechCaptureStarted: (() => void) | undefined;
+let onSpeechTranscribed: ((event: { transcript: string }) => void) | undefined;
+const connectDeviceRuntime = vi.fn(
+  (handlers: {
+    onWakePhraseDetected: () => void;
+    onSpeechCaptureStarted?: () => void;
+    onSpeechTranscribed?: (event: { transcript: string }) => void;
+  }) => {
+    onWakePhraseDetected = handlers.onWakePhraseDetected;
+    onSpeechCaptureStarted = handlers.onSpeechCaptureStarted;
+    onSpeechTranscribed = handlers.onSpeechTranscribed;
+    return vi.fn();
+  },
+);
 const submitPrompt = vi.fn();
 
 vi.mock("../src/brain-client", () => ({
@@ -45,6 +55,8 @@ afterEach(() => {
   brainHandlers = undefined;
   connectDeviceRuntime.mockClear();
   onWakePhraseDetected = undefined;
+  onSpeechCaptureStarted = undefined;
+  onSpeechTranscribed = undefined;
   submitPrompt.mockClear();
 });
 
@@ -92,6 +104,77 @@ describe("DeviceClient", () => {
     });
 
     expect(screen.getByLabelText("Prompt input")).toHaveFocus();
+  });
+
+  it("submits transcribed speech through the Brain Server prompt path", async () => {
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechCaptureStarted?.();
+    });
+
+    expect(screen.getByText("Listening...")).toBeInTheDocument();
+
+    act(() => {
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+
+    expect(screen.getByLabelText("Prompt input")).toHaveValue("turn off the lights");
+    await vi.waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "turn off the lights",
+        }),
+      ),
+    );
+  });
+
+  it("speaks the response for a voice-started Prompt Exchange", async () => {
+    const cancel = vi.fn();
+    const speak = vi.fn();
+    class MockSpeechSynthesisUtterance {
+      text: string;
+
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: { cancel, speak },
+    });
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "The lights are off." },
+      });
+    });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "The lights are off." }));
   });
 
   it("returns to standby after five idle seconds when no prompt is submitted", () => {
