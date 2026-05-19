@@ -1,0 +1,15 @@
+[Unit]
+Description=Open Nexus Device UI kiosk
+Wants=network-online.target
+After=network-online.target graphical.target
+
+[Service]
+Type=simple
+User=%i
+EnvironmentFile=/etc/open-nexus/device-ui-kiosk.env
+ExecStart=/usr/local/bin/open-nexus-device-ui-kiosk
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

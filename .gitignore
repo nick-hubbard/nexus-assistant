@@ -15,6 +15,9 @@ node_modules
 # Testing
 coverage
 
+# Local Brain Server state
+apps/brain/data/
+
 # Turbo
 .turbo
 
@@ -26,6 +29,7 @@ coverage
 out/
 build
 dist
+*.tsbuildinfo
 
 
 # Debug

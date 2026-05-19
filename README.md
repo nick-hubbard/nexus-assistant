@@ -1,159 +1,107 @@
-# Turborepo starter
+# Open Nexus
 
-This Turborepo starter is maintained by the Turborepo core team.
+Open Nexus is a local-first assistant system made of a Brain Server and one or more touchscreen Device UIs.
 
-## Using this example
+## Requirements
 
-Run the following command:
+- Node.js 18 or newer
+- pnpm 9
 
-```sh
-npx create-turbo@latest
-```
+## Local Setup
 
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Install workspace dependencies from the repo root:
 
 ```sh
-cd my-turborepo
-turbo build
+pnpm install
 ```
 
-Without global `turbo`, use your package manager:
+The default local development configuration uses the fake AI Provider, so subscription runtime setup is not required for `pnpm dev`.
+
+To customize local settings, copy the example environment files:
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+cp apps/brain/.env.example apps/brain/.env
+cp apps/device-ui/.env.example apps/device-ui/.env
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Local Development
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Start the Brain Server and Device UI together:
 
 ```sh
-turbo build --filter=docs
+pnpm dev
 ```
 
-Without global `turbo`:
+Expected local URLs:
+
+- Brain Server HTTP API: `http://127.0.0.1:4317`
+- Brain Server WebSocket events: `ws://127.0.0.1:4317/events`
+- Device UI: `http://localhost:3000`
+
+The Brain Server defaults to `BRAIN_AI_PROVIDER=fake` and stores local Brain Files and Interaction Logs under `apps/brain/data/brain` when started from the workspace script.
+
+To ask the Device UI questions through a logged-in Codex subscription, authenticate the Codex CLI on the same machine that runs the Brain Server:
 
 ```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+codex login
 ```
 
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Then set the Brain Server provider:
 
 ```sh
-cd my-turborepo
-turbo dev
+BRAIN_AI_PROVIDER=openai-codex
 ```
 
-Without global `turbo`, use your package manager:
+The `openai-codex` Subscription Provider uses the local Codex CLI as a runtime bridge. By default it runs `codex exec "<prompt>"`; override `BRAIN_CODEX_COMMAND`, `BRAIN_CODEX_ARGS`, or `BRAIN_CODEX_TIMEOUT_MS` if your Codex install needs a different command, profile, or timeout.
+
+If your global `codex` wrapper is unavailable but `npx @openai/codex@latest exec` works, use:
 
 ```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+BRAIN_CODEX_COMMAND=npx
+BRAIN_CODEX_ARGS=-y @openai/codex@latest exec
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Raspberry Pi Kiosk Deployment
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Repo-owned Kiosk Deployment assets live in `deploy/device-ui/raspberry-pi/`.
+
+Use them to install a systemd service that launches the Device UI fullscreen in Chromium when the Raspberry Pi boots. See `deploy/device-ui/raspberry-pi/README.md` for install, update, start, stop, and troubleshooting steps.
+
+## Brain Server Docker Deployment
+
+Repo-owned Brain Server Docker assets live in `deploy/brain/`.
+
+Use them to build and run a local container with the Brain Server port published and `/data` mounted for persistent Brain Files and SQLite Interaction Logs. See `deploy/brain/README.md` for build, compose, environment, and Subscription Provider bridge notes.
+
+## Environment
+
+Brain Server settings live in `apps/brain/.env`:
+
+- `BRAIN_PORT`: HTTP and WebSocket port. Defaults to `4317`.
+- `BRAIN_HOST`: Host interface. Defaults to `127.0.0.1`.
+- `BRAIN_VERSION`: Version returned by `/health`. Defaults to `0.1.0`.
+- `BRAIN_AI_PROVIDER`: AI Provider mode. Use `fake` for local development or `openai-codex` for the Codex CLI bridge.
+- `BRAIN_DATA_DIR`: Directory for Brain Files and Interaction Logs.
+- `BRAIN_CODEX_COMMAND`: Command used by the `openai-codex` bridge. Defaults to `codex`.
+- `BRAIN_CODEX_ARGS`: Whitespace-separated arguments before the prompt. Defaults to `exec`.
+- `BRAIN_CODEX_TIMEOUT_MS`: Bridge timeout in milliseconds. Defaults to `120000`.
+- `DISCORD_WEBHOOK_URL`: Optional Issue Reporter destination for System Issues.
+
+Device UI settings live in `apps/device-ui/.env`:
+
+- `NEXT_PUBLIC_BRAIN_HTTP_URL`: Browser-visible Brain Server HTTP base URL.
+- `NEXT_PUBLIC_BRAIN_WS_URL`: Browser-visible Brain Server WebSocket base URL.
+- `NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL`: Browser-visible local Device Runtime WebSocket base URL.
+- `NEXT_PUBLIC_DEVICE_UI_MODE`: Set to `development` to enable the Option+T Development Wake Shortcut; plain `pnpm dev` also enables it through Next.js development mode.
+
+## Merge Gate
+
+Run the local validation suite before opening or merging a PR:
 
 ```sh
-turbo dev --filter=web
+pnpm validate
 ```
 
-Without global `turbo`:
+This runs linting, type validation, tests, and builds across the workspace.
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Pull requests into `main` and `develop` are protected by the GitHub Merge Gate policy. See [docs/github-protected-branches.md](docs/github-protected-branches.md) for the required branch protection settings and the `gh` setup script.

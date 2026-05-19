@@ -1,0 +1,298 @@
+:root {
+  color: #17211b;
+  background: #f7f4ec;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(135deg, rgba(36, 112, 98, 0.1), transparent 32%),
+    linear-gradient(315deg, rgba(170, 76, 54, 0.11), transparent 38%), #f7f4ec;
+}
+
+.nexus-nest-surface {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #fffefa;
+  background-image: var(--nexus-nest-background);
+  background-position: center;
+  background-size: cover;
+}
+
+.nexus-aurora-active::before,
+.nexus-aurora-active::after {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  content: "";
+  pointer-events: none;
+}
+
+.nexus-aurora-active::before {
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2) 62%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.26));
+  box-shadow: inset 0 0 24px 10px rgba(255, 255, 255, 0.08);
+}
+
+.nexus-aurora-active::after {
+  inset: -14px;
+  background: conic-gradient(
+    from 45deg,
+    #ff3b30 0deg,
+    #ff9500 52deg,
+    #ffcc00 103deg,
+    #34c759 154deg,
+    #5ac8fa 205deg,
+    #007aff 256deg,
+    #af52de 308deg,
+    #ff3b30 360deg
+  );
+  mask:
+    linear-gradient(to right, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to left, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to bottom, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to top, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px);
+  -webkit-mask:
+    linear-gradient(to right, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to left, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to bottom, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px),
+    linear-gradient(to top, #000 0 18px, rgba(0, 0, 0, 0.52) 36px, transparent 50px);
+  opacity: 0.82;
+  filter: blur(8px);
+}
+
+.nexus-nest-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 38%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.44), transparent 46%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.58), transparent 42%);
+  pointer-events: none;
+}
+
+.nexus-nest-status {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 1;
+}
+
+.nexus-nest-interaction {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 16px;
+  width: min(100% - 48px, 720px);
+  padding: 40px 0 120px 40px;
+}
+
+.nexus-nest-panel {
+  color: #17211b;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.nexus-nest-panel-title {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.nexus-nest-clock {
+  position: absolute;
+  right: clamp(24px, 5vw, 56px);
+  bottom: clamp(22px, 5vw, 52px);
+  z-index: 1;
+  color: #fffefa;
+  font-size: clamp(3rem, 9vw, 7rem);
+  font-weight: 700;
+  line-height: 0.9;
+  text-shadow: 0 6px 32px rgba(0, 0, 0, 0.5);
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.nexus-device-shell {
+  position: relative;
+  display: grid;
+  gap: 20px;
+  width: min(100% - 32px, 880px);
+  margin: 0 auto;
+  padding: 40px 0;
+}
+
+.nexus-device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.nexus-eyebrow {
+  margin: 0 0 6px;
+  color: #59635d;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: clamp(2rem, 8vw, 4.75rem);
+  line-height: 0.95;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.nexus-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(23, 33, 27, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 50px rgba(23, 33, 27, 0.08);
+}
+
+.nexus-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #59635d;
+  font-size: 0.9rem;
+}
+
+.nexus-prompt-form {
+  display: grid;
+  gap: 12px;
+}
+
+.nexus-textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  border: 1px solid rgba(23, 33, 27, 0.16);
+  border-radius: 8px;
+  padding: 14px;
+  color: #17211b;
+  background: #fffefa;
+}
+
+.nexus-textarea:focus {
+  outline: 3px solid rgba(36, 112, 98, 0.2);
+  border-color: #247062;
+}
+
+.nexus-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  width: fit-content;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  color: #fffefa;
+  background: #247062;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nexus-button:disabled {
+  color: #59635d;
+  background: #d8ddd2;
+  cursor: not-allowed;
+}
+
+.nexus-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.nexus-status-badge.is-connected {
+  color: #0f513f;
+  background: #dff4df;
+}
+
+.nexus-status-badge.is-disconnected {
+  color: #7a2e20;
+  background: #f7dfd8;
+}
+
+.nexus-response-output {
+  display: block;
+  min-height: 120px;
+  white-space: pre-wrap;
+  color: #17211b;
+  line-height: 1.6;
+}
+
+.nexus-error {
+  margin-bottom: 0;
+  color: #9f2f24;
+  font-weight: 700;
+}
+
+.nexus-spin {
+  animation: nexus-spin 1s linear infinite;
+}
+
+@keyframes nexus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .nexus-device-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nexus-device-shell {
+    width: min(100% - 24px, 880px);
+    padding: 24px 0;
+  }
+
+  .nexus-nest-interaction {
+    width: min(100% - 24px, 720px);
+    padding: 24px 0 112px;
+    margin: 0 auto;
+  }
+
+  .nexus-nest-status {
+    top: 16px;
+    right: 16px;
+  }
+}

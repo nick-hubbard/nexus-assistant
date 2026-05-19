@@ -3,15 +3,21 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "dev": "turbo run dev --filter=@open-nexus/brain --filter=@open-nexus/device-ui",
+    "lint": "biome check . && turbo run lint",
+    "format": "biome format --write .",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "validate": "pnpm lint && pnpm check-types && pnpm test && pnpm build",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@types/node": "^25.8.0",
     "prettier": "^3.7.4",
     "turbo": "^2.9.14",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "^4.1.6"
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {

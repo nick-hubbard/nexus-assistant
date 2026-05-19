@@ -1,0 +1,235 @@
+"use client";
+
+import { nestHubDeviceSurfacePlugin, type PromptState } from "@open-nexus/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createBrainClient } from "../src/brain-client";
+import { createDeviceRuntimeClient } from "../src/device-runtime-client";
+
+const deviceId = "dev_device-ui";
+const standbyDelayMs = 5000;
+
+export function DeviceClient() {
+  const client = useMemo(() => createBrainClient(), []);
+  const deviceRuntimeClient = useMemo(() => createDeviceRuntimeClient(), []);
+  const activeDeviceSurface = nestHubDeviceSurfacePlugin;
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptExchangeIdRef = useRef<string | undefined>(undefined);
+  const promptRef = useRef("");
+  const promptStateRef = useRef<PromptState>("idle");
+  const voicePromptExchangeIdRef = useRef<string | undefined>(undefined);
+  const [assistantResponse, setAssistantResponse] = useState("");
+  const [connected, setConnected] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => formatCurrentTime());
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [prompt, setPrompt] = useState("");
+  const [promptComposerVisible, setPromptComposerVisible] = useState(false);
+  const [promptState, setPromptState] = useState<PromptState>("idle");
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(formatCurrentTime()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const wakePromptComposer = useCallback(() => {
+    setPromptComposerVisible(true);
+  }, []);
+
+  useEffect(() => {
+    promptRef.current = prompt;
+  }, [prompt]);
+
+  useEffect(() => {
+    promptStateRef.current = promptState;
+  }, [promptState]);
+
+  const submitPrompt = useCallback(
+    async (promptOverride?: string, options: { spokenResponse?: boolean } = {}) => {
+      const trimmedPrompt = (promptOverride ?? promptRef.current).trim();
+      const currentPromptState = promptStateRef.current;
+
+      if (
+        !trimmedPrompt ||
+        currentPromptState === "sending" ||
+        currentPromptState === "streaming"
+      ) {
+        return;
+      }
+
+      setAssistantResponse("");
+      setErrorMessage(undefined);
+      setPromptState("sending");
+
+      try {
+        const accepted = await client.submitPrompt({
+          deviceId,
+          prompt: trimmedPrompt,
+          requestedAt: new Date().toISOString(),
+          context: {
+            locale: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+        });
+        promptExchangeIdRef.current = accepted.promptExchangeId;
+        if (options.spokenResponse) {
+          voicePromptExchangeIdRef.current = accepted.promptExchangeId;
+        }
+      } catch (error) {
+        setPromptState("failed");
+        setErrorMessage(error instanceof Error ? error.message : "Prompt submission failed.");
+      }
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    if (!isDevelopmentDeviceUiMode()) {
+      return undefined;
+    }
+
+    const wakeWithShortcut = (event: KeyboardEvent) => {
+      if (event.altKey && event.code === "KeyT") {
+        event.preventDefault();
+        wakePromptComposer();
+      }
+    };
+
+    window.addEventListener("keydown", wakeWithShortcut);
+    return () => window.removeEventListener("keydown", wakeWithShortcut);
+  }, [wakePromptComposer]);
+
+  useEffect(() => {
+    return deviceRuntimeClient.connect({
+      onWakePhraseDetected: wakePromptComposer,
+      onSpeechCaptureStarted: () => {
+        wakePromptComposer();
+        setPrompt("");
+        setAssistantResponse("Listening...");
+        setErrorMessage(undefined);
+        setPromptState("idle");
+      },
+      onSpeechTranscribed: (event) => {
+        wakePromptComposer();
+        setPrompt(event.transcript);
+        void submitPrompt(event.transcript, { spokenResponse: true });
+      },
+    });
+  }, [deviceRuntimeClient, submitPrompt, wakePromptComposer]);
+
+  useEffect(() => {
+    if (promptComposerVisible) {
+      promptInputRef.current?.focus();
+    }
+  }, [promptComposerVisible]);
+
+  useEffect(() => {
+    if (
+      !promptComposerVisible ||
+      promptState === "sending" ||
+      promptState === "streaming" ||
+      (promptState === "idle" && prompt.trim().length > 0)
+    ) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setPromptComposerVisible(false), standbyDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [prompt, promptComposerVisible, promptState]);
+
+  useEffect(() => {
+    return client.connect({
+      onConnected: () => setConnected(true),
+      onDisconnected: () => setConnected(false),
+      onEvent: (event) => {
+        const activePromptExchangeId = promptExchangeIdRef.current;
+        if (
+          "promptExchangeId" in event &&
+          activePromptExchangeId &&
+          event.promptExchangeId !== activePromptExchangeId
+        ) {
+          return;
+        }
+
+        if (event.type === "prompt-exchange.started") {
+          setPromptState("streaming");
+          setAssistantResponse("");
+        }
+
+        if (event.type === "prompt-exchange.delta") {
+          setPromptState("streaming");
+          setAssistantResponse((response) => `${response}${event.payload.delta}`);
+        }
+
+        if (event.type === "prompt-exchange.completed") {
+          setPromptState("completed");
+          setAssistantResponse(event.payload.response);
+          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
+            speakAssistantResponse(event.payload.response);
+            voicePromptExchangeIdRef.current = undefined;
+          }
+        }
+
+        if (event.type === "prompt-exchange.failed") {
+          setPromptState("failed");
+          setErrorMessage(event.payload.systemIssue.message);
+          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
+            voicePromptExchangeIdRef.current = undefined;
+          }
+        }
+      },
+    });
+  }, [client]);
+
+  const ActiveDeviceSurface = activeDeviceSurface.Surface;
+
+  return (
+    <ActiveDeviceSurface
+      assistantResponse={assistantResponse}
+      connectionState={connected ? "connected" : "disconnected"}
+      currentTime={currentTime}
+      device={{
+        id: deviceId,
+        locale: getDeviceLocale(),
+        timezone: getDeviceTimezone(),
+      }}
+      errorMessage={errorMessage}
+      onPromptChange={setPrompt}
+      onSubmitPrompt={submitPrompt}
+      prompt={prompt}
+      promptComposerVisible={promptComposerVisible}
+      promptInputRef={promptInputRef}
+      promptState={promptState}
+      settings={activeDeviceSurface.defaultSettings}
+    />
+  );
+}
+
+function isDevelopmentDeviceUiMode() {
+  return (
+    process.env.NEXT_PUBLIC_DEVICE_UI_MODE === "development" ||
+    (!process.env.NEXT_PUBLIC_DEVICE_UI_MODE && process.env.NODE_ENV === "development")
+  );
+}
+
+function formatCurrentTime() {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+function getDeviceLocale() {
+  return typeof navigator === "undefined" ? "en-US" : navigator.language;
+}
+
+function getDeviceTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function speakAssistantResponse(response: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(response));
+}
