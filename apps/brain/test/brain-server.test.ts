@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,6 +13,7 @@ import type { BrainConfig } from "../src/config.js";
 import { createBrainServer } from "../src/index.js";
 import type { IssueReport, IssueReporter } from "../src/issue-reporter.js";
 import { type AiProvider, AiProviderError } from "../src/provider.js";
+import { installedSkillsDirForDataDir, type SkillAdapter, SkillHost } from "../src/skill-host.js";
 
 const openServers: Array<ReturnType<typeof createBrainServer>> = [];
 
@@ -147,6 +148,67 @@ describe("Brain Server", () => {
     expect(issueReporter.reports).toEqual([]);
   });
 
+  it('routes "turn off the lights" Prompt Exchanges through the Home Assistant Skill', async () => {
+    const dataDir = await createDataDir();
+    await writeHomeAssistantSkillPackage(dataDir);
+    const skillRequests: unknown[] = [];
+    const brain = await startBrainServer({
+      dataDir,
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
+      }),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 3);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "turn off the lights",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const accepted = PromptExchangeAcceptedSchema.parse(await response.json());
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.delta",
+      "prompt-exchange.completed",
+    ]);
+    expect(events[1]).toMatchObject({
+      promptExchangeId: accepted.promptExchangeId,
+      payload: {
+        status: "streaming",
+        delta: "Done, I turned off Kitchen lights.",
+        sequence: 0,
+      },
+    });
+    expect(events[2]).toMatchObject({
+      payload: {
+        status: "completed",
+        response: "Done, I turned off Kitchen lights.",
+      },
+    });
+    expect(skillRequests).toEqual([
+      {
+        action: "turn-off",
+        input: { prompt: "turn off the lights" },
+        configuration: {
+          baseUrl: "http://homeassistant.local:8123",
+          accessToken: undefined,
+        },
+      },
+    ]);
+  });
+
   it("records and reports System Issues from the Device UI", async () => {
     const issueReporter = new FakeIssueReporter();
     const brain = await startBrainServer({ issueReporter });
@@ -267,12 +329,19 @@ describe("Brain Server", () => {
 });
 
 async function startBrainServer(
-  options: { issueReporter?: IssueReporter; provider?: AiProvider } = {},
+  options: {
+    dataDir?: string;
+    issueReporter?: IssueReporter;
+    provider?: AiProvider;
+    skillHost?: SkillHost;
+  } = {},
 ) {
+  const dataDir = options.dataDir ?? (await createDataDir());
   const brain = createBrainServer({
-    config: createTestConfig({ dataDir: await createDataDir() }),
+    config: createTestConfig({ dataDir }),
     ...(options.issueReporter ? { issueReporter: options.issueReporter } : {}),
     ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.skillHost ? { skillHost: options.skillHost } : {}),
   });
 
   await brain.initialize();
@@ -325,6 +394,51 @@ function collectMessages(socket: WebSocket, count: number) {
     });
     socket.once("error", reject);
   });
+}
+
+async function writeHomeAssistantSkillPackage(dataDir: string) {
+  const packagePath = path.join(installedSkillsDirForDataDir(dataDir), "home-assistant");
+  await mkdir(packagePath, { recursive: true });
+  await writeFile(path.join(packagePath, "adapter.js"), "export default {};\n");
+  await writeFile(
+    path.join(packagePath, "skill.json"),
+    JSON.stringify({
+      id: "home-assistant",
+      name: "Home Assistant",
+      version: "0.1.0",
+      entrypoint: "./adapter.js",
+      capabilities: [
+        {
+          id: "home-assistant.control",
+          title: "Control Home Assistant",
+          description: "Controls Home Assistant entities.",
+          actions: ["turn-on", "turn-off"],
+          examples: ["turn off the lights"],
+        },
+      ],
+      configurationSchema: {
+        type: "object",
+        required: ["baseUrl"],
+        properties: {
+          baseUrl: { type: "string" },
+          accessToken: { type: "string" },
+        },
+      },
+    }),
+  );
+}
+
+function fakeHomeAssistantAdapter(requests: unknown[]): SkillAdapter {
+  return {
+    invoke: (request) => {
+      requests.push(request);
+      return {
+        status: "succeeded",
+        responseText: "Done, I turned off Kitchen lights.",
+        data: { entityIds: ["light.kitchen"] },
+      };
+    },
+  };
 }
 
 class FakeIssueReporter implements IssueReporter {
