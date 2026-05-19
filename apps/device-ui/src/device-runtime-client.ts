@@ -6,7 +6,27 @@ const DeviceWakePhraseDetectedEventSchema = z.object({
   phrase: z.string().min(1),
 });
 
+const DeviceSpeechCaptureStartedEventSchema = z.object({
+  type: z.literal("device-speech-capture.started"),
+  startedAt: z.string().datetime(),
+});
+
+const DeviceSpeechTranscribedEventSchema = z.object({
+  type: z.literal("device-speech.transcribed"),
+  transcribedAt: z.string().datetime(),
+  transcript: z.string().trim().min(1),
+});
+
+const DeviceRuntimeEventSchema = z.discriminatedUnion("type", [
+  DeviceWakePhraseDetectedEventSchema,
+  DeviceSpeechCaptureStartedEventSchema,
+  DeviceSpeechTranscribedEventSchema,
+]);
+
 export type DeviceWakePhraseDetectedEvent = z.infer<typeof DeviceWakePhraseDetectedEventSchema>;
+export type DeviceSpeechCaptureStartedEvent = z.infer<typeof DeviceSpeechCaptureStartedEventSchema>;
+export type DeviceSpeechTranscribedEvent = z.infer<typeof DeviceSpeechTranscribedEventSchema>;
+export type DeviceRuntimeEvent = z.infer<typeof DeviceRuntimeEventSchema>;
 
 interface DeviceRuntimeClientOptions {
   webSocketUrl?: string;
@@ -14,6 +34,8 @@ interface DeviceRuntimeClientOptions {
 
 interface DeviceRuntimeConnectionHandlers {
   onWakePhraseDetected: (event: DeviceWakePhraseDetectedEvent) => void;
+  onSpeechCaptureStarted?: (event: DeviceSpeechCaptureStartedEvent) => void;
+  onSpeechTranscribed?: (event: DeviceSpeechTranscribedEvent) => void;
 }
 
 export function createDeviceRuntimeClient(options: DeviceRuntimeClientOptions = {}) {
@@ -30,9 +52,21 @@ export function createDeviceRuntimeClient(options: DeviceRuntimeClientOptions = 
           return;
         }
 
-        const event = DeviceWakePhraseDetectedEventSchema.safeParse(JSON.parse(message.data));
-        if (event.success) {
+        const event = DeviceRuntimeEventSchema.safeParse(JSON.parse(message.data));
+        if (!event.success) {
+          return;
+        }
+
+        if (event.data.type === "device-wake-phrase.detected") {
           handlers.onWakePhraseDetected(event.data);
+        }
+
+        if (event.data.type === "device-speech-capture.started") {
+          handlers.onSpeechCaptureStarted?.(event.data);
+        }
+
+        if (event.data.type === "device-speech.transcribed") {
+          handlers.onSpeechTranscribed?.(event.data);
         }
       };
 
