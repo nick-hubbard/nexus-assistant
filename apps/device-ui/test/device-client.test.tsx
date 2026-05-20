@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeviceClient } from "../app/device-client";
+import type { SpokenResponseRuntimeResult } from "../src/device-runtime-client";
 
 type BrainHandlers = {
   onConnected: () => void;
@@ -20,7 +21,9 @@ const connect = vi.fn((handlers: BrainHandlers) => {
 let onWakePhraseDetected: (() => void) | undefined;
 let onSpeechCaptureStarted: (() => void) | undefined;
 let onSpeechTranscribed: ((event: { transcript: string }) => void) | undefined;
-const speakPromptExchangeResponse = vi.fn();
+const speakPromptExchangeResponse = vi.fn<() => Promise<SpokenResponseRuntimeResult>>(() =>
+  Promise.resolve({ status: "accepted" }),
+);
 const connectDeviceRuntime = vi.fn(
   (handlers: {
     onWakePhraseDetected: () => void;
@@ -60,6 +63,7 @@ afterEach(() => {
   onSpeechCaptureStarted = undefined;
   onSpeechTranscribed = undefined;
   speakPromptExchangeResponse.mockClear();
+  speakPromptExchangeResponse.mockResolvedValue({ status: "accepted" });
   submitPrompt.mockClear();
 });
 
@@ -170,6 +174,139 @@ describe("DeviceClient", () => {
       responseText: "The lights are off.",
       replaceCurrent: true,
     });
+  });
+
+  it("keeps a selected Spoken Response visible when the Device Runtime is unavailable", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "production");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    speakPromptExchangeResponse.mockResolvedValue({
+      status: "unavailable",
+      reason: "runtime_unavailable",
+    });
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "The lights are off." },
+      });
+    });
+
+    expect(screen.getByText("The lights are off.")).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        "Spoken Response audio path unavailable.",
+        expect.objectContaining({ category: "runtime", reason: "runtime_unavailable" }),
+      ),
+    );
+    warn.mockRestore();
+  });
+
+  it("uses browser speech as a development fallback when runtime playback fails", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const cancel = vi.fn();
+    const speak = vi.fn();
+    const utterances: Array<{ text: string }> = [];
+    const Utterance = vi.fn(function (this: { text: string }, text: string) {
+      this.text = text;
+      utterances.push(this);
+    });
+    vi.stubGlobal("speechSynthesis", { cancel, speak });
+    vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
+    speakPromptExchangeResponse.mockResolvedValue({
+      status: "rejected",
+      reason: "playback_failed",
+    });
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "The lights are off." },
+      });
+    });
+
+    expect(screen.getByText("The lights are off.")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(cancel).toHaveBeenCalled();
+      expect(Utterance).toHaveBeenCalledWith("The lights are off.");
+      expect(speak).toHaveBeenCalledWith(utterances[0]);
+    });
+    warn.mockRestore();
+  });
+
+  it("keeps the Device UI usable when no Spoken Response audio path is available", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "always");
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("speechSynthesis", undefined);
+    vi.stubGlobal("SpeechSynthesisUtterance", undefined);
+    speakPromptExchangeResponse.mockResolvedValue({
+      status: "unavailable",
+      reason: "runtime_unavailable",
+    });
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+    });
+    fireEvent.keyDown(window, { key: "Dead", code: "KeyT", altKey: true });
+    fireEvent.change(screen.getByLabelText("Prompt input"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /send prompt/i }));
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "Hello back." },
+      });
+    });
+
+    expect(screen.getByText("Hello back.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Prompt input")).toHaveValue("Hello");
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        "Spoken Response audio path unavailable.",
+        expect.objectContaining({ category: "runtime", reason: "browser_speech_unavailable" }),
+      ),
+    );
+    warn.mockRestore();
   });
 
   it("does not speak text-started Prompt Exchanges in voice-only mode", async () => {

@@ -36,6 +36,11 @@ interface DeviceRuntimeClientOptions {
   webSocketUrl?: string;
 }
 
+export type SpokenResponseRuntimeResult =
+  | { status: "accepted" }
+  | { status: "rejected"; reason: string }
+  | { status: "unavailable"; reason: string };
+
 interface DeviceRuntimeConnectionHandlers {
   onWakePhraseDetected: (event: DeviceWakePhraseDetectedEvent) => void;
   onSpeechCaptureStarted?: (event: DeviceSpeechCaptureStartedEvent) => void;
@@ -47,17 +52,70 @@ export function createDeviceRuntimeClient(options: DeviceRuntimeClientOptions = 
     options.webSocketUrl ?? process.env.NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL ?? "ws://127.0.0.1:4318";
 
   return {
-    speakPromptExchangeResponse(command: SpeakPromptExchangeResponseCommand) {
+    speakPromptExchangeResponse(
+      command: SpeakPromptExchangeResponseCommand,
+    ): Promise<SpokenResponseRuntimeResult> {
       const parsedCommand = SpeakPromptExchangeResponseCommandSchema.parse(command);
       const socket = new WebSocket(`${webSocketUrl}/commands`);
       const serializedCommand = JSON.stringify(parsedCommand);
 
-      const sendCommand = () => {
-        socket.send(serializedCommand);
-        socket.close();
-      };
+      return new Promise((resolve) => {
+        let settled = false;
+        let commandSent = false;
 
-      socket.addEventListener("open", sendCommand, { once: true });
+        const settle = (result: SpokenResponseRuntimeResult) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          socket.removeEventListener("open", sendCommand);
+          socket.removeEventListener("message", handleMessage);
+          socket.removeEventListener("error", handleError);
+          socket.removeEventListener("close", handleClose);
+          if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close();
+          }
+          resolve(result);
+        };
+
+        const sendCommand = () => {
+          commandSent = true;
+          socket.send(serializedCommand);
+        };
+
+        const handleMessage = (message: MessageEvent) => {
+          const response = parseRuntimeCommandResponse(message.data);
+          if (!response) {
+            return;
+          }
+
+          if (response.type === "command.accepted") {
+            settle({ status: "accepted" });
+            return;
+          }
+
+          settle({ status: "rejected", reason: response.reason });
+        };
+
+        const handleError = () => {
+          settle({ status: "unavailable", reason: "runtime_socket_error" });
+        };
+
+        const handleClose = () => {
+          if (!settled) {
+            settle({
+              status: "unavailable",
+              reason: commandSent ? "runtime_closed_before_ack" : "runtime_unavailable",
+            });
+          }
+        };
+
+        socket.addEventListener("open", sendCommand);
+        socket.addEventListener("message", handleMessage);
+        socket.addEventListener("error", handleError);
+        socket.addEventListener("close", handleClose);
+      });
     },
 
     connect(handlers: DeviceRuntimeConnectionHandlers) {
@@ -96,4 +154,26 @@ export function createDeviceRuntimeClient(options: DeviceRuntimeClientOptions = 
       };
     },
   };
+}
+
+function parseRuntimeCommandResponse(data: unknown) {
+  const response = RuntimeCommandResponseSchema.safeParse(parseJson(data));
+  return response.success ? response.data : undefined;
+}
+
+const RuntimeCommandResponseSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("command.accepted") }),
+  z.object({ type: z.literal("command.rejected"), reason: z.string().min(1) }),
+]);
+
+function parseJson(data: unknown) {
+  if (typeof data !== "string") {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    return undefined;
+  }
 }

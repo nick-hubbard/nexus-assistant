@@ -22,6 +22,10 @@ class MockWebSocket extends EventTarget {
     sentCommands.push(data);
   }
 
+  error() {
+    this.dispatchEvent(new Event("error"));
+  }
+
   open() {
     this.dispatchEvent(new Event("open"));
   }
@@ -89,10 +93,10 @@ describe("createDeviceRuntimeClient", () => {
     );
   });
 
-  it("sends a typed Spoken Response command to the Device Runtime", () => {
+  it("sends a typed Spoken Response command to the Device Runtime", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
 
-    createDeviceRuntimeClient({
+    const result = createDeviceRuntimeClient({
       webSocketUrl: "ws://device-runtime.test",
     }).speakPromptExchangeResponse({
       type: "prompt-exchange-response.speak",
@@ -103,6 +107,7 @@ describe("createDeviceRuntimeClient", () => {
     });
 
     sockets[0]?.open();
+    sockets[0]?.message(JSON.stringify({ type: "command.accepted" }));
 
     expect(sockets[0]?.url).toBe("ws://device-runtime.test/commands");
     expect(sentCommands).toEqual([
@@ -114,5 +119,46 @@ describe("createDeviceRuntimeClient", () => {
         replaceCurrent: true,
       }),
     ]);
+    await expect(result).resolves.toEqual({ status: "accepted" });
+  });
+
+  it("reports Device Runtime command rejection", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+
+    const result = createDeviceRuntimeClient({
+      webSocketUrl: "ws://device-runtime.test",
+    }).speakPromptExchangeResponse({
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_123456789012",
+      responseText: "The lights are off.",
+      replaceCurrent: true,
+    });
+
+    sockets[0]?.open();
+    sockets[0]?.message(JSON.stringify({ type: "command.rejected", reason: "playback_failed" }));
+
+    await expect(result).resolves.toEqual({ status: "rejected", reason: "playback_failed" });
+  });
+
+  it("reports unavailable Device Runtime audio when the command socket errors", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+
+    const result = createDeviceRuntimeClient({
+      webSocketUrl: "ws://device-runtime.test",
+    }).speakPromptExchangeResponse({
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_123456789012",
+      responseText: "The lights are off.",
+      replaceCurrent: true,
+    });
+
+    sockets[0]?.error();
+
+    await expect(result).resolves.toEqual({
+      status: "unavailable",
+      reason: "runtime_socket_error",
+    });
   });
 });

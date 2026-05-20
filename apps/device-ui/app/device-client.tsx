@@ -3,7 +3,10 @@
 import { nestHubDeviceSurfacePlugin, type PromptState } from "@open-nexus/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrainClient } from "../src/brain-client";
-import { createDeviceRuntimeClient } from "../src/device-runtime-client";
+import {
+  createDeviceRuntimeClient,
+  type SpokenResponseRuntimeResult,
+} from "../src/device-runtime-client";
 
 const deviceId = "dev_device-ui";
 const standbyDelayMs = 5000;
@@ -166,12 +169,10 @@ export function DeviceClient() {
           setPromptState("completed");
           setAssistantResponse(event.payload.response);
           if (event.promptExchangeId === spokenPromptExchangeIdRef.current) {
-            deviceRuntimeClient.speakPromptExchangeResponse({
-              type: "prompt-exchange-response.speak",
-              deviceId,
+            void speakSelectedPromptExchangeResponse({
+              deviceRuntimeClient,
               promptExchangeId: event.promptExchangeId,
               responseText: event.payload.response,
-              replaceCurrent: true,
             });
             spokenPromptExchangeIdRef.current = undefined;
           }
@@ -212,6 +213,27 @@ export function DeviceClient() {
   );
 }
 
+async function speakSelectedPromptExchangeResponse(options: {
+  deviceRuntimeClient: ReturnType<typeof createDeviceRuntimeClient>;
+  promptExchangeId: string;
+  responseText: string;
+}) {
+  const runtimeResult = await options.deviceRuntimeClient.speakPromptExchangeResponse({
+    type: "prompt-exchange-response.speak",
+    deviceId,
+    promptExchangeId: options.promptExchangeId,
+    responseText: options.responseText,
+    replaceCurrent: true,
+  });
+
+  if (runtimeResult.status === "accepted") {
+    return;
+  }
+
+  logSpokenResponseIssue(runtimeResult);
+  speakWithBrowserFallback(options.responseText);
+}
+
 function isDevelopmentDeviceUiMode() {
   return (
     process.env.NEXT_PUBLIC_DEVICE_UI_MODE === "development" ||
@@ -234,6 +256,32 @@ function shouldSpeakPromptExchange(startedBy: PromptStartMode) {
   const mode = getSpokenResponseMode();
 
   return mode === "always" || (mode === "voice-only" && startedBy === "voice");
+}
+
+function speakWithBrowserFallback(responseText: string) {
+  if (!isDevelopmentDeviceUiMode() || typeof window === "undefined") {
+    return false;
+  }
+
+  const speechSynthesis = window.speechSynthesis;
+  const SpeechSynthesisUtteranceCtor = window.SpeechSynthesisUtterance;
+  if (!speechSynthesis || !SpeechSynthesisUtteranceCtor) {
+    logSpokenResponseIssue({ status: "unavailable", reason: "browser_speech_unavailable" });
+    return false;
+  }
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtteranceCtor(responseText));
+  return true;
+}
+
+function logSpokenResponseIssue(
+  result: Exclude<SpokenResponseRuntimeResult, { status: "accepted" }>,
+) {
+  console.warn("Spoken Response audio path unavailable.", {
+    category: "runtime",
+    reason: result.reason,
+  });
 }
 
 function formatCurrentTime() {
