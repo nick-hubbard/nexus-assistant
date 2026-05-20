@@ -100,6 +100,10 @@ _Avoid_: hotphrase, Brain wake word, server wake command
 The full spoken interaction path where a **Device Wake Phrase** leads to speech capture, transcription, a **Prompt Exchange**, and a spoken or displayed response.
 _Avoid_: wake phrase, text prompt, development shortcut
 
+**Spoken Response**:
+Audio playback of a **Prompt Exchange** response on the device that initiated or owns the spoken interaction.
+_Avoid_: Brain Server speech, provider audio response, global announcement
+
 **Device Runtime**:
 A local companion process on the device that owns hardware-facing device capabilities for the **Device UI**.
 _Avoid_: browser app, Brain Server plugin, provider service
@@ -178,6 +182,13 @@ _Avoid_: smoke check, fast check
 - A **Kiosk Deployment** runs the **Device UI** without requiring manual browser startup after boot.
 - A **Device Wake Phrase** is detected by a local **Device Runtime** and consumed by the **Device UI**, not the **Brain Server**.
 - **Voice Control** is required for the Home Assistant experience but can follow the first text-based **Skill** invocation slice.
+- A **Spoken Response** is produced from response text on the device side; the **Brain Server** does not perform device audio playback.
+- A **Spoken Response** belongs to the **Device UI** or **Device Runtime** handling that **Prompt Exchange**, not to every connected device.
+- A voice-started **Prompt Exchange** should always produce a **Spoken Response** when device audio is available.
+- A text-started **Prompt Exchange** should produce a **Spoken Response** only when the **Device UI** is explicitly configured to do so for testing or accessibility.
+- Device-level **Spoken Response** behavior supports three modes: voice-started exchanges only, all exchanges, or no exchanges.
+- The **Device UI** decides whether a **Prompt Exchange** should produce a **Spoken Response** and asks the local **Device Runtime** to perform production audio playback.
+- A new **Spoken Response** cancels any current **Spoken Response** on the same device.
 - The **Device Runtime** sends local WebSocket events to the **Device UI** for device wake phrase detection.
 - A device wake phrase detection event is named `device-wake-phrase.detected` and carries detection time plus phrase text.
 - Local development must let a browser-served **Device UI** exercise wake phrase behavior with a **Development Wake Shortcut** enabled by environment configuration.
