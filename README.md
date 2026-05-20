@@ -94,6 +94,12 @@ Device UI settings live in `apps/device-ui/.env`:
 - `NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL`: Browser-visible local Device Runtime WebSocket base URL.
 - `NEXT_PUBLIC_DEVICE_UI_MODE`: Set to `development` to enable the Option+T Development Wake Shortcut; plain `pnpm dev` also enables it through Next.js development mode.
 
+Device Runtime settings:
+
+- `DEVICE_RUNTIME_PORT`: Local Device Runtime WebSocket and health port. Defaults to `4318`.
+- `DEVICE_RUNTIME_HOST`: Local Device Runtime host interface. Defaults to `127.0.0.1`.
+- `DEVICE_RUNTIME_TTS_COMMAND`: Local TTS command used for Spoken Response playback. Defaults to `say`.
+
 ## Merge Gate
 
 Run the local validation suite before opening or merging a PR:

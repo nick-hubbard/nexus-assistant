@@ -16,7 +16,11 @@ describe("mergeGateChecks", () => {
       readFileSync(resolve(testDir, "../../../package.json"), "utf8"),
     ) as { scripts: { dev: string } };
 
-    expect(targets).toEqual(["@open-nexus/brain", "@open-nexus/device-ui"]);
+    expect(targets).toEqual([
+      "@open-nexus/brain",
+      "@open-nexus/device-ui",
+      "@open-nexus/device-runtime",
+    ]);
     expect(rootPackageJson.scripts.dev).toBe(
       `turbo run dev ${targets.map((target) => `--filter=${target}`).join(" ")}`,
     );

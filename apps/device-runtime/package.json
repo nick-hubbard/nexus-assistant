@@ -1,0 +1,27 @@
+{
+  "name": "@open-nexus/device-runtime",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "nexus-device-runtime": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/device-runtime-server.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "lint": "biome check .",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@open-nexus/protocol": "workspace:*",
+    "dotenv": "^17.4.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0"
+  }
+}
