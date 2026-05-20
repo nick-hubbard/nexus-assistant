@@ -5,8 +5,8 @@ import path from "node:path";
 import { z } from "zod";
 import {
   installedSkillsDirForDataDir,
-  skillConfigurationPath,
   SkillManifestSchema,
+  skillConfigurationPath,
 } from "./skill-host.js";
 
 export { skillConfigurationPath } from "./skill-host.js";

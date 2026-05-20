@@ -4,11 +4,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   installedSkillsDirForDataDir,
-  skillConfigurationPath,
   type SkillAdapter,
   SkillHost,
   SkillHostError,
   type SkillManifest,
+  skillConfigurationPath,
 } from "../src/skill-host.js";
 
 describe("Skill Host", () => {
