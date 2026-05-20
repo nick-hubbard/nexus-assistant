@@ -37,8 +37,33 @@ Expected local URLs:
 - Brain Server HTTP API: `http://127.0.0.1:4317`
 - Brain Server WebSocket events: `ws://127.0.0.1:4317/events`
 - Device UI: `http://localhost:3000`
+- Device Runtime health: `http://127.0.0.1:4318/health`
 
 The Brain Server defaults to `BRAIN_AI_PROVIDER=fake` and stores local Brain Files and Interaction Logs under `apps/brain/data/brain` when started from the workspace script.
+
+The workspace dev script also starts the local Device Runtime. The Device Runtime is the device-side companion service for hardware-facing capabilities such as wake phrase events, speech transcription events, and production Spoken Response playback. To run it by itself for local development or physical-device use:
+
+```sh
+pnpm --filter @open-nexus/device-runtime dev
+```
+
+By default it listens on `127.0.0.1:4318`, exposes `/health`, and accepts WebSocket command traffic at `ws://127.0.0.1:4318/commands`. Set `DEVICE_RUNTIME_HOST=0.0.0.0` when another machine on the local network must reach the runtime, and point the Device UI at it with `NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL`.
+
+## Spoken Responses
+
+Spoken Responses are produced on the device side from the completed Prompt Exchange response text. The Brain Server does not play device audio.
+
+Configure Device UI speech behavior with `NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES`:
+
+- `voice-only`: Speak only Prompt Exchanges that were started by local voice input. This is the default.
+- `always`: Speak voice-started and text-started Prompt Exchanges. Use this for testing or accessibility.
+- `off`: Keep visible responses but disable Spoken Response playback.
+
+When a selected Prompt Exchange completes, the Device UI asks the local Device Runtime to play the response. The Device Runtime starts the configured TTS command, which defaults to `say` on macOS and can be changed with `DEVICE_RUNTIME_TTS_COMMAND`.
+
+Each new Spoken Response replaces the current Spoken Response on the same device. The Device UI sends playback requests with replacement enabled, and the Device Runtime cancels any active playback before starting the next response.
+
+If the Device Runtime is unavailable, rejects a command, or closes before accepting playback, the Device UI logs a runtime warning. In development mode only, it then tries the browser `speechSynthesis` API as a fallback. If browser speech is also unavailable, the visible response remains usable and no audio is played. Production deployments should rely on the Device Runtime audio path rather than browser fallback.
 
 To ask the Device UI questions through a logged-in Codex subscription, authenticate the Codex CLI on the same machine that runs the Brain Server:
 
@@ -93,6 +118,7 @@ Device UI settings live in `apps/device-ui/.env`:
 - `NEXT_PUBLIC_BRAIN_WS_URL`: Browser-visible Brain Server WebSocket base URL.
 - `NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL`: Browser-visible local Device Runtime WebSocket base URL.
 - `NEXT_PUBLIC_DEVICE_UI_MODE`: Set to `development` to enable the Option+T Development Wake Shortcut; plain `pnpm dev` also enables it through Next.js development mode.
+- `NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES`: Spoken Response mode. Use `voice-only`, `always`, or `off`. Defaults to `voice-only`.
 
 Device Runtime settings:
 
