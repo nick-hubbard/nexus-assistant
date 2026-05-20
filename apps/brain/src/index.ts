@@ -17,6 +17,7 @@ import { CodexCliProvider } from "./codex-provider.js";
 import type { BrainConfig } from "./config.js";
 import { loadConfig, validateConfig } from "./config.js";
 import { FakeAiProvider } from "./fake-provider.js";
+import { HeartbeatScheduler } from "./heartbeat-scheduler.js";
 import { createPromptExchangeId, createSystemIssueId } from "./ids.js";
 import { InteractionLog } from "./interaction-log.js";
 import {
@@ -33,6 +34,7 @@ interface BrainServerOptions {
   interactionLog?: InteractionLog;
   issueReporter?: IssueReporter;
   skillHost?: SkillHost;
+  heartbeatScheduler?: HeartbeatScheduler;
 }
 
 export function createBrainServer(options: BrainServerOptions = {}) {
@@ -41,6 +43,14 @@ export function createBrainServer(options: BrainServerOptions = {}) {
   const interactionLog = options.interactionLog ?? new InteractionLog(config.dataDir);
   const issueReporter = options.issueReporter ?? createIssueReporter(config.discordWebhookUrl);
   const skillHost = options.skillHost ?? new SkillHost({ dataDir: config.dataDir });
+  const heartbeatScheduler =
+    options.heartbeatScheduler ??
+    new HeartbeatScheduler({
+      dataDir: config.dataDir,
+      skillHost,
+      interactionLog,
+      pollMs: config.heartbeatPollMs,
+    });
   const app = express();
   const server = http.createServer(app);
   const events = new WebSocketServer({ noServer: true });
@@ -161,8 +171,15 @@ export function createBrainServer(options: BrainServerOptions = {}) {
     config,
     interactionLog,
     skillHost,
-    initialize: () => initializeBrainFiles(config.dataDir),
+    heartbeatScheduler,
+    initialize: async () => {
+      await initializeBrainFiles(config.dataDir);
+      if (config.heartbeatEnabled) {
+        heartbeatScheduler.start();
+      }
+    },
     close: async () => {
+      heartbeatScheduler.stop();
       await new Promise<void>((resolve, reject) => {
         for (const socket of sockets) {
           socket.close();

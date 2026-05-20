@@ -10,6 +10,8 @@ const ConfigSchema = z
     codexCommand: z.string().min(1),
     codexArgs: z.array(z.string()),
     codexTimeoutMs: z.coerce.number().int().positive(),
+    heartbeatEnabled: z.coerce.boolean(),
+    heartbeatPollMs: z.coerce.number().int().positive(),
     discordWebhookUrl: z.string().url().optional(),
   })
   .strict();
@@ -26,6 +28,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BrainConfig {
     codexCommand: env.BRAIN_CODEX_COMMAND ?? "codex",
     codexArgs: parseCodexArgs(env.BRAIN_CODEX_ARGS ?? "exec"),
     codexTimeoutMs: env.BRAIN_CODEX_TIMEOUT_MS ?? 120000,
+    heartbeatEnabled: env.BRAIN_HEARTBEAT_ENABLED ?? true,
+    heartbeatPollMs: env.BRAIN_HEARTBEAT_POLL_MS ?? 60000,
     discordWebhookUrl: env.DISCORD_WEBHOOK_URL || undefined,
   });
 }

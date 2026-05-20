@@ -116,6 +116,14 @@ _Avoid_: production hotkey, command-line wake flag, test-only bypass
 A human-readable Markdown file that defines durable assistant identity, memory, or configuration.
 _Avoid_: database config, hidden state
 
+**Heartbeat Schedule**:
+A human-readable **Brain File** schedule that lets the **Brain Server** periodically invoke installed **Skills** without a user-initiated **Prompt Exchange**.
+_Avoid_: operating-system crontab, Device UI timer, Skill-owned scheduler
+
+**Heartbeat Scheduler**:
+The Brain-owned runtime that reads the **Heartbeat Schedule**, determines which scheduled Skill actions are due, invokes them through the **Skill Host**, and records outcomes.
+_Avoid_: cron daemon, plugin runtime, Assistant Orchestrator
+
 **Interaction Log**:
 A structured record of requests, responses, errors, and runtime events produced by the **Brain Server**.
 _Avoid_: memory, identity, config
@@ -200,6 +208,9 @@ _Avoid_: smoke check, fast check
 - The first **AI Provider** must be a **Subscription Provider** backed by OpenAI/Codex subscription authentication.
 - A **Prompt Exchange** starts over HTTP and can continue over WebSocket events.
 - **Brain Files** store durable assistant behavior and memory in Markdown where possible.
+- A **Heartbeat Schedule** is a **Brain File** named `HEARTBEAT.md`.
+- The **Heartbeat Scheduler** may invoke installed **Skills** on interval or cron-like schedules without requiring a user-initiated **Prompt Exchange**.
+- **Heartbeat Scheduler** executions still go through the **Skill Host** so scheduled work uses the same installed Skill boundary as prompt-driven work.
 - **Interaction Logs** are structured persistence owned by the **Brain Server**.
 - **System Issues** are reported to Discord and recorded in **Interaction Logs**.
 - **Issue Reporters** are owned by the **Brain Server**.
