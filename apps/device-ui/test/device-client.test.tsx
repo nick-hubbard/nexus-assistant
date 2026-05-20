@@ -34,6 +34,25 @@ const connectDeviceRuntime = vi.fn(
 );
 const submitPrompt = vi.fn();
 
+function stubSpeechSynthesis() {
+  const cancel = vi.fn();
+  const speak = vi.fn();
+  class MockSpeechSynthesisUtterance {
+    text: string;
+
+    constructor(text: string) {
+      this.text = text;
+    }
+  }
+  vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: { cancel, speak },
+  });
+
+  return { cancel, speak };
+}
+
 vi.mock("../src/brain-client", () => ({
   createBrainClient: () => ({
     connect,
@@ -136,21 +155,9 @@ describe("DeviceClient", () => {
     );
   });
 
-  it("speaks the response for a voice-started Prompt Exchange", async () => {
-    const cancel = vi.fn();
-    const speak = vi.fn();
-    class MockSpeechSynthesisUtterance {
-      text: string;
-
-      constructor(text: string) {
-        this.text = text;
-      }
-    }
-    vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
-    Object.defineProperty(window, "speechSynthesis", {
-      configurable: true,
-      value: { cancel, speak },
-    });
+  it("speaks the response for a voice-started Prompt Exchange in voice-only mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
+    const { cancel, speak } = stubSpeechSynthesis();
     submitPrompt.mockResolvedValue({
       promptExchangeId: "px_123456789012",
       status: "accepted",
@@ -175,6 +182,101 @@ describe("DeviceClient", () => {
 
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "The lights are off." }));
+  });
+
+  it("does not speak text-started Prompt Exchanges in voice-only mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
+    const { cancel, speak } = stubSpeechSynthesis();
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+    });
+    fireEvent.keyDown(window, { key: "Dead", code: "KeyT", altKey: true });
+    fireEvent.change(screen.getByLabelText("Prompt input"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /send prompt/i }));
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "Hello back." },
+      });
+    });
+
+    expect(cancel).not.toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
+    expect(screen.getByText("Hello back.")).toBeInTheDocument();
+  });
+
+  it("speaks text-started Prompt Exchanges in always mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "always");
+    const { cancel, speak } = stubSpeechSynthesis();
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+    });
+    fireEvent.keyDown(window, { key: "Dead", code: "KeyT", altKey: true });
+    fireEvent.change(screen.getByLabelText("Prompt input"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /send prompt/i }));
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "Hello back." },
+      });
+    });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Hello back." }));
+  });
+
+  it("keeps visible responses but disables spoken responses in off mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "off");
+    const { cancel, speak } = stubSpeechSynthesis();
+    submitPrompt.mockResolvedValue({
+      promptExchangeId: "px_123456789012",
+      status: "accepted",
+      acceptedAt: new Date().toISOString(),
+    });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_123456789012",
+        payload: { response: "The lights are off." },
+      });
+    });
+
+    expect(cancel).not.toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
+    expect(screen.getByText("The lights are off.")).toBeInTheDocument();
   });
 
   it("returns to standby after five idle seconds when no prompt is submitted", () => {

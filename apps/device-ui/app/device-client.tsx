@@ -7,6 +7,8 @@ import { createDeviceRuntimeClient } from "../src/device-runtime-client";
 
 const deviceId = "dev_device-ui";
 const standbyDelayMs = 5000;
+type SpokenResponseMode = "voice-only" | "always" | "off";
+type PromptStartMode = "text" | "voice";
 
 export function DeviceClient() {
   const client = useMemo(() => createBrainClient(), []);
@@ -16,7 +18,7 @@ export function DeviceClient() {
   const promptExchangeIdRef = useRef<string | undefined>(undefined);
   const promptRef = useRef("");
   const promptStateRef = useRef<PromptState>("idle");
-  const voicePromptExchangeIdRef = useRef<string | undefined>(undefined);
+  const spokenPromptExchangeIdRef = useRef<string | undefined>(undefined);
   const [assistantResponse, setAssistantResponse] = useState("");
   const [connected, setConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => formatCurrentTime());
@@ -43,9 +45,10 @@ export function DeviceClient() {
   }, [promptState]);
 
   const submitPrompt = useCallback(
-    async (promptOverride?: string, options: { spokenResponse?: boolean } = {}) => {
+    async (promptOverride?: string, options: { startedBy?: PromptStartMode } = {}) => {
       const trimmedPrompt = (promptOverride ?? promptRef.current).trim();
       const currentPromptState = promptStateRef.current;
+      const startedBy = options.startedBy ?? "text";
 
       if (
         !trimmedPrompt ||
@@ -70,8 +73,8 @@ export function DeviceClient() {
           },
         });
         promptExchangeIdRef.current = accepted.promptExchangeId;
-        if (options.spokenResponse) {
-          voicePromptExchangeIdRef.current = accepted.promptExchangeId;
+        if (shouldSpeakPromptExchange(startedBy)) {
+          spokenPromptExchangeIdRef.current = accepted.promptExchangeId;
         }
       } catch (error) {
         setPromptState("failed");
@@ -110,7 +113,7 @@ export function DeviceClient() {
       onSpeechTranscribed: (event) => {
         wakePromptComposer();
         setPrompt(event.transcript);
-        void submitPrompt(event.transcript, { spokenResponse: true });
+        void submitPrompt(event.transcript, { startedBy: "voice" });
       },
     });
   }, [deviceRuntimeClient, submitPrompt, wakePromptComposer]);
@@ -162,17 +165,17 @@ export function DeviceClient() {
         if (event.type === "prompt-exchange.completed") {
           setPromptState("completed");
           setAssistantResponse(event.payload.response);
-          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
+          if (event.promptExchangeId === spokenPromptExchangeIdRef.current) {
             speakAssistantResponse(event.payload.response);
-            voicePromptExchangeIdRef.current = undefined;
+            spokenPromptExchangeIdRef.current = undefined;
           }
         }
 
         if (event.type === "prompt-exchange.failed") {
           setPromptState("failed");
           setErrorMessage(event.payload.systemIssue.message);
-          if (event.promptExchangeId === voicePromptExchangeIdRef.current) {
-            voicePromptExchangeIdRef.current = undefined;
+          if (event.promptExchangeId === spokenPromptExchangeIdRef.current) {
+            spokenPromptExchangeIdRef.current = undefined;
           }
         }
       },
@@ -208,6 +211,23 @@ function isDevelopmentDeviceUiMode() {
     process.env.NEXT_PUBLIC_DEVICE_UI_MODE === "development" ||
     (!process.env.NEXT_PUBLIC_DEVICE_UI_MODE && process.env.NODE_ENV === "development")
   );
+}
+
+function getSpokenResponseMode(): SpokenResponseMode {
+  if (
+    process.env.NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES === "always" ||
+    process.env.NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES === "off"
+  ) {
+    return process.env.NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES;
+  }
+
+  return "voice-only";
+}
+
+function shouldSpeakPromptExchange(startedBy: PromptStartMode) {
+  const mode = getSpokenResponseMode();
+
+  return mode === "always" || (mode === "voice-only" && startedBy === "voice");
 }
 
 function formatCurrentTime() {
