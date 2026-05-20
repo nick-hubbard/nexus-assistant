@@ -3,5 +3,5 @@ export function mergeGateChecks(): readonly string[] {
 }
 
 export function localDevWorkspaceTargets(): readonly string[] {
-  return ["@open-nexus/brain", "@open-nexus/device-ui"];
+  return ["@open-nexus/brain", "@open-nexus/device-ui", "@open-nexus/device-runtime"];
 }
