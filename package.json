@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --filter=@open-nexus/brain --filter=@open-nexus/device-ui",
+    "dev": "turbo run dev --filter=@open-nexus/brain --filter=@open-nexus/device-ui --filter=@open-nexus/device-runtime",
     "lint": "biome check . && turbo run lint",
     "format": "biome format --write .",
     "check-types": "turbo run check-types",

@@ -1,3 +1,7 @@
+import {
+  type SpeakPromptExchangeResponseCommand,
+  SpeakPromptExchangeResponseCommandSchema,
+} from "@open-nexus/protocol";
 import { z } from "zod";
 
 const DeviceWakePhraseDetectedEventSchema = z.object({
@@ -27,18 +31,6 @@ export type DeviceWakePhraseDetectedEvent = z.infer<typeof DeviceWakePhraseDetec
 export type DeviceSpeechCaptureStartedEvent = z.infer<typeof DeviceSpeechCaptureStartedEventSchema>;
 export type DeviceSpeechTranscribedEvent = z.infer<typeof DeviceSpeechTranscribedEventSchema>;
 export type DeviceRuntimeEvent = z.infer<typeof DeviceRuntimeEventSchema>;
-
-const SpeakPromptExchangeResponseCommandSchema = z.object({
-  type: z.literal("prompt-exchange-response.speak"),
-  deviceId: z.string().min(1),
-  promptExchangeId: z.string().min(1),
-  responseText: z.string().min(1),
-  replaceCurrent: z.literal(true),
-});
-
-export type SpeakPromptExchangeResponseCommand = z.input<
-  typeof SpeakPromptExchangeResponseCommandSchema
->;
 
 interface DeviceRuntimeClientOptions {
   webSocketUrl?: string;

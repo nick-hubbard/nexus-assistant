@@ -80,6 +80,16 @@ export const SystemIssueSchema = z
   })
   .strict();
 
+export const SpeakPromptExchangeResponseCommandSchema = z
+  .object({
+    type: z.literal("prompt-exchange-response.speak"),
+    deviceId: DeviceIdSchema,
+    promptExchangeId: PromptExchangeIdSchema,
+    responseText: z.string().trim().min(1),
+    replaceCurrent: z.literal(true),
+  })
+  .strict();
+
 const PromptExchangeEventBaseSchema = z.object({
   promptExchangeId: PromptExchangeIdSchema,
   occurredAt: IsoDateTimeSchema,
@@ -149,4 +159,7 @@ export type PromptExchangeStatus = z.infer<typeof PromptExchangeStatusSchema>;
 export type PromptExchangeAccepted = z.infer<typeof PromptExchangeAcceptedSchema>;
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
 export type SystemIssue = z.infer<typeof SystemIssueSchema>;
+export type SpeakPromptExchangeResponseCommand = z.infer<
+  typeof SpeakPromptExchangeResponseCommandSchema
+>;
 export type WebSocketEvent = z.infer<typeof WebSocketEventSchema>;

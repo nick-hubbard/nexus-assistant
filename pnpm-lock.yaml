@@ -64,6 +64,25 @@ importers:
         specifier: ^4.21.0
         version: 4.22.1
 
+  apps/device-runtime:
+    dependencies:
+      '@open-nexus/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      ws:
+        specifier: ^8.18.3
+        version: 8.20.1
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.1
+
   apps/device-ui:
     dependencies:
       '@open-nexus/protocol':
