@@ -20,6 +20,7 @@ const connect = vi.fn((handlers: BrainHandlers) => {
 let onWakePhraseDetected: (() => void) | undefined;
 let onSpeechCaptureStarted: (() => void) | undefined;
 let onSpeechTranscribed: ((event: { transcript: string }) => void) | undefined;
+const speakPromptExchangeResponse = vi.fn();
 const connectDeviceRuntime = vi.fn(
   (handlers: {
     onWakePhraseDetected: () => void;
@@ -34,25 +35,6 @@ const connectDeviceRuntime = vi.fn(
 );
 const submitPrompt = vi.fn();
 
-function stubSpeechSynthesis() {
-  const cancel = vi.fn();
-  const speak = vi.fn();
-  class MockSpeechSynthesisUtterance {
-    text: string;
-
-    constructor(text: string) {
-      this.text = text;
-    }
-  }
-  vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
-  Object.defineProperty(window, "speechSynthesis", {
-    configurable: true,
-    value: { cancel, speak },
-  });
-
-  return { cancel, speak };
-}
-
 vi.mock("../src/brain-client", () => ({
   createBrainClient: () => ({
     connect,
@@ -63,6 +45,7 @@ vi.mock("../src/brain-client", () => ({
 vi.mock("../src/device-runtime-client", () => ({
   createDeviceRuntimeClient: () => ({
     connect: connectDeviceRuntime,
+    speakPromptExchangeResponse,
   }),
 }));
 
@@ -76,6 +59,7 @@ afterEach(() => {
   onWakePhraseDetected = undefined;
   onSpeechCaptureStarted = undefined;
   onSpeechTranscribed = undefined;
+  speakPromptExchangeResponse.mockClear();
   submitPrompt.mockClear();
 });
 
@@ -157,7 +141,6 @@ describe("DeviceClient", () => {
 
   it("speaks the response for a voice-started Prompt Exchange in voice-only mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
-    const { cancel, speak } = stubSpeechSynthesis();
     submitPrompt.mockResolvedValue({
       promptExchangeId: "px_123456789012",
       status: "accepted",
@@ -180,14 +163,18 @@ describe("DeviceClient", () => {
       });
     });
 
-    expect(cancel).toHaveBeenCalledTimes(1);
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "The lights are off." }));
+    expect(speakPromptExchangeResponse).toHaveBeenCalledWith({
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_123456789012",
+      responseText: "The lights are off.",
+      replaceCurrent: true,
+    });
   });
 
   it("does not speak text-started Prompt Exchanges in voice-only mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "voice-only");
-    const { cancel, speak } = stubSpeechSynthesis();
     submitPrompt.mockResolvedValue({
       promptExchangeId: "px_123456789012",
       status: "accepted",
@@ -212,15 +199,13 @@ describe("DeviceClient", () => {
       });
     });
 
-    expect(cancel).not.toHaveBeenCalled();
-    expect(speak).not.toHaveBeenCalled();
+    expect(speakPromptExchangeResponse).not.toHaveBeenCalled();
     expect(screen.getByText("Hello back.")).toBeInTheDocument();
   });
 
   it("speaks text-started Prompt Exchanges in always mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_MODE", "development");
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "always");
-    const { cancel, speak } = stubSpeechSynthesis();
     submitPrompt.mockResolvedValue({
       promptExchangeId: "px_123456789012",
       status: "accepted",
@@ -245,13 +230,17 @@ describe("DeviceClient", () => {
       });
     });
 
-    expect(cancel).toHaveBeenCalledTimes(1);
-    expect(speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Hello back." }));
+    expect(speakPromptExchangeResponse).toHaveBeenCalledWith({
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_123456789012",
+      responseText: "Hello back.",
+      replaceCurrent: true,
+    });
   });
 
   it("keeps visible responses but disables spoken responses in off mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "off");
-    const { cancel, speak } = stubSpeechSynthesis();
     submitPrompt.mockResolvedValue({
       promptExchangeId: "px_123456789012",
       status: "accepted",
@@ -274,9 +263,60 @@ describe("DeviceClient", () => {
       });
     });
 
-    expect(cancel).not.toHaveBeenCalled();
-    expect(speak).not.toHaveBeenCalled();
+    expect(speakPromptExchangeResponse).not.toHaveBeenCalled();
     expect(screen.getByText("The lights are off.")).toBeInTheDocument();
+  });
+
+  it("replaces the current Spoken Response when a new selected response completes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEVICE_UI_SPOKEN_RESPONSES", "always");
+    submitPrompt
+      .mockResolvedValueOnce({
+        promptExchangeId: "px_first",
+        status: "accepted",
+        acceptedAt: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce({
+        promptExchangeId: "px_second",
+        status: "accepted",
+        acceptedAt: new Date().toISOString(),
+      });
+
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onConnected();
+      onSpeechTranscribed?.({ transcript: "turn off the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_first",
+        payload: { response: "The lights are off." },
+      });
+    });
+
+    act(() => {
+      onSpeechTranscribed?.({ transcript: "turn on the lights" });
+    });
+    await vi.waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "prompt-exchange.completed",
+        promptExchangeId: "px_second",
+        payload: { response: "The lights are on." },
+      });
+    });
+
+    expect(speakPromptExchangeResponse).toHaveBeenNthCalledWith(2, {
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_second",
+      responseText: "The lights are on.",
+      replaceCurrent: true,
+    });
   });
 
   it("returns to standby after five idle seconds when no prompt is submitted", () => {
@@ -339,6 +379,7 @@ describe("DeviceClient", () => {
         payload: { response: "Done" },
       });
     });
+    expect(screen.getByText("Done")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(5000);

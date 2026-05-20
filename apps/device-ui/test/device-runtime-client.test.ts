@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeviceRuntimeClient } from "../src/device-runtime-client";
 
 const sockets: MockWebSocket[] = [];
+const sentCommands: string[] = [];
 
 class MockWebSocket extends EventTarget {
   static instances = sockets;
@@ -17,6 +18,14 @@ class MockWebSocket extends EventTarget {
     this.dispatchEvent(new Event("close"));
   }
 
+  send(data: string) {
+    sentCommands.push(data);
+  }
+
+  open() {
+    this.dispatchEvent(new Event("open"));
+  }
+
   message(data: string) {
     this.dispatchEvent(new MessageEvent("message", { data }));
   }
@@ -25,6 +34,7 @@ class MockWebSocket extends EventTarget {
 afterEach(() => {
   vi.unstubAllGlobals();
   sockets.splice(0);
+  sentCommands.splice(0);
 });
 
 describe("createDeviceRuntimeClient", () => {
@@ -77,5 +87,32 @@ describe("createDeviceRuntimeClient", () => {
         transcript: "turn off the lights",
       }),
     );
+  });
+
+  it("sends a typed Spoken Response command to the Device Runtime", () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+
+    createDeviceRuntimeClient({
+      webSocketUrl: "ws://device-runtime.test",
+    }).speakPromptExchangeResponse({
+      type: "prompt-exchange-response.speak",
+      deviceId: "dev_device-ui",
+      promptExchangeId: "px_123456789012",
+      responseText: "The lights are off.",
+      replaceCurrent: true,
+    });
+
+    sockets[0]?.open();
+
+    expect(sockets[0]?.url).toBe("ws://device-runtime.test/commands");
+    expect(sentCommands).toEqual([
+      JSON.stringify({
+        type: "prompt-exchange-response.speak",
+        deviceId: "dev_device-ui",
+        promptExchangeId: "px_123456789012",
+        responseText: "The lights are off.",
+        replaceCurrent: true,
+      }),
+    ]);
   });
 });
