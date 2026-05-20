@@ -189,6 +189,8 @@ _Avoid_: smoke check, fast check
 - Device-level **Spoken Response** behavior supports three modes: voice-started exchanges only, all exchanges, or no exchanges.
 - The **Device UI** decides whether a **Prompt Exchange** should produce a **Spoken Response** and asks the local **Device Runtime** to perform production audio playback.
 - A new **Spoken Response** cancels any current **Spoken Response** on the same device.
+- The default **Spoken Response** mode is voice-started exchanges only.
+- **Spoken Response** browser speech is a development fallback only when **Device Runtime** audio playback is unavailable.
 - The **Device Runtime** sends local WebSocket events to the **Device UI** for device wake phrase detection.
 - A device wake phrase detection event is named `device-wake-phrase.detected` and carries detection time plus phrase text.
 - Local development must let a browser-served **Device UI** exercise wake phrase behavior with a **Development Wake Shortcut** enabled by environment configuration.
