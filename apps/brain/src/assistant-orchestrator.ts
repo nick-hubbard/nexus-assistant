@@ -19,6 +19,7 @@ const OrchestratorDecisionSchema = z
 export interface AssistantOrchestratorResult {
   skillId: string;
   action: string;
+  input: unknown;
   result: SkillActionResult;
 }
 
@@ -51,27 +52,35 @@ export class AssistantOrchestrator {
       return {
         skillId: skill.manifest.id,
         action: decision.action,
+        input: inputForSkill(decision.input, prompt),
         result: safetyRefusal,
       };
     }
 
     const request: SkillActionRequest = {
       action: decision.action,
-      input: decision.input ?? { prompt },
-      ...(decision.configuration === undefined ? {} : { configuration: decision.configuration }),
+      input: inputForSkill(decision.input, prompt),
     };
+    const result = await this.options.skillHost.invoke(skill.manifest.id, request);
 
     return {
       skillId: skill.manifest.id,
       action: decision.action,
-      result: await this.options.skillHost.invoke(skill.manifest.id, request),
+      input: request.input,
+      result,
     };
   }
 
   private async selectSkillAction(prompt: string, installedSkills: InstalledSkill[]) {
+    const fastDecision = selectFastSkillAction(prompt, installedSkills);
+    if (fastDecision) {
+      return fastDecision;
+    }
+
+    const orchestratorPrompt = buildOrchestratorPrompt(prompt, installedSkills);
     const response = await collectProviderResponse(
       this.options.provider.complete({
-        prompt: buildOrchestratorPrompt(prompt, installedSkills),
+        prompt: orchestratorPrompt,
       }),
     );
 
@@ -82,6 +91,72 @@ export class AssistantOrchestrator {
 
     return decision;
   }
+}
+
+function selectFastSkillAction(prompt: string, installedSkills: InstalledSkill[]) {
+  const homeAssistantSkill = installedSkills.find(
+    (skill) => skill.manifest.id === "home-assistant",
+  );
+  if (!homeAssistantSkill) {
+    return undefined;
+  }
+
+  const action = inferHomeAssistantAction(prompt);
+  if (!action || !skillSupportsAction(homeAssistantSkill, action)) {
+    return undefined;
+  }
+
+  return {
+    skillId: homeAssistantSkill.manifest.id,
+    action,
+    input: { prompt },
+  };
+}
+
+function inferHomeAssistantAction(prompt: string) {
+  const normalized = normalizePrompt(prompt);
+  const mentionsKnownEntityType =
+    /\b(light|lights|switch|switches|scene|script|thermostat|temperature|climate)\b/.test(
+      normalized,
+    );
+
+  if (/\b(turn|switch)\s+on\b/.test(normalized) && mentionsKnownEntityType) {
+    return /\b(switch|switches)\b/.test(normalized) && !/\b(light|lights)\b/.test(normalized)
+      ? "switch-on"
+      : "turn-on";
+  }
+
+  if (/\b(turn|switch)\s+off\b/.test(normalized) && mentionsKnownEntityType) {
+    return /\b(switch|switches)\b/.test(normalized) && !/\b(light|lights)\b/.test(normalized)
+      ? "switch-off"
+      : "turn-off";
+  }
+
+  if (/\b(set|change)\b.*\b(thermostat|temperature|climate)\b/.test(normalized)) {
+    return "set-temperature";
+  }
+
+  if (/\b(activate|turn on|start)\b.*\bscene\b/.test(normalized)) {
+    return "activate-scene";
+  }
+
+  if (/\b(run|start|turn on)\b.*\bscript\b/.test(normalized)) {
+    return "run-script";
+  }
+
+  if (/\b(are|is|what|status|state)\b/.test(normalized) && mentionsKnownEntityType) {
+    return "read-state";
+  }
+
+  if (/\b(home assistant entities|available entities|what entities)\b/.test(normalized)) {
+    return "discover-entities";
+  }
+
+  return undefined;
+}
+
+function skillSupportsAction(skill: InstalledSkill, action: string) {
+  return skill.manifest.capabilities.some((capability) => capability.actions.includes(action));
 }
 
 function enforceSkillSafetyPolicy(
@@ -110,12 +185,27 @@ function enforceSkillSafetyPolicy(
   return undefined;
 }
 
+function inputForSkill(input: unknown, prompt: string) {
+  if (input === undefined || input === null) {
+    return { prompt };
+  }
+
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+
+  return { prompt, ...input };
+}
+
 function buildOrchestratorPrompt(prompt: string, installedSkills: InstalledSkill[]) {
   return [
     "You are the Brain Server Assistant Orchestrator.",
     "Decide whether an installed Skill should handle the user prompt.",
     "Use only the Skill Manifest capability metadata below.",
-    "Return only JSON with keys: skillId, action, input, configuration.",
+    "Return only JSON with keys: skillId, action, input.",
+    'For input, prefer {"prompt": <the original user prompt>} unless a Skill capability clearly requires a more specific field.',
+    "Do not invent input keys that are not documented by the Skill Manifest.",
+    "Do not include Skill Configuration, credentials, base URLs, tokens, or secrets.",
     "Use null skillId and null action when no Skill should handle the prompt.",
     "",
     `User prompt: ${JSON.stringify(prompt)}`,
@@ -126,7 +216,6 @@ function buildOrchestratorPrompt(prompt: string, installedSkills: InstalledSkill
         id: skill.manifest.id,
         name: skill.manifest.name,
         capabilities: skill.manifest.capabilities,
-        configurationSchema: skill.manifest.configurationSchema,
         safetyDefaults: skill.manifest.safetyDefaults,
       })),
     ),
@@ -153,4 +242,11 @@ function parseDecision(response: string) {
   } catch {
     return undefined;
   }
+}
+
+function normalizePrompt(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }

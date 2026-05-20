@@ -241,6 +241,13 @@ async function runPromptExchange({
         skillId: orchestratorResult.skillId,
         action: orchestratorResult.action,
         status: orchestratorResult.result.status,
+        input: orchestratorResult.input,
+        ...(orchestratorResult.result.responseText === undefined
+          ? {}
+          : { responseText: orchestratorResult.result.responseText }),
+        ...(orchestratorResult.result.error === undefined
+          ? {}
+          : { error: orchestratorResult.result.error }),
       });
       publishPromptDelta({ promptExchangeId, delta: response, sequence, publish });
     } else {

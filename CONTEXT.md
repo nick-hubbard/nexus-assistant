@@ -16,6 +16,42 @@ _Avoid_: theme, skin, frontend
 An installable **Device Surface** implementation that changes the **Device UI** presentation without owning runtime communication.
 _Avoid_: Device UI plugin, Brain Server plugin, page template
 
+**Skill**:
+An installable assistant capability that the **Brain Server** can use during a **Prompt Exchange** to answer a request or perform an external action.
+_Avoid_: Device Surface Plugin, hard-coded integration, app feature
+
+**Home Assistant Skill**:
+A **Skill** that lets the **Brain Server** communicate with Home Assistant to inspect or control home devices.
+_Avoid_: Home Assistant plugin, Device UI plugin, surface integration
+
+**Skill Host**:
+The Brain-owned runtime boundary that discovers, loads, configures, and invokes installed **Skills**.
+_Avoid_: plugin loader, Device Runtime, package manager
+
+**Skill Registry**:
+A configured source that maps installable **Skill** names to downloadable skill packages.
+_Avoid_: app store, npm registry, hard-coded skill list
+
+**Skill Manifest**:
+A file inside a **Skill** package that declares its identity, entrypoint, capability metadata, configuration schema, and safety defaults.
+_Avoid_: package.json, hidden convention, source-code registration
+
+**Skill Configuration**:
+Brain-owned local settings and secrets that make an installed **Skill** usable in one **Local Deployment**.
+_Avoid_: Skill Manifest, package settings, Device UI preferences
+
+**Assistant Orchestrator**:
+The Brain-owned decision point that routes a **Prompt Exchange** between ordinary AI responses and installed **Skill** invocations.
+_Avoid_: hard-coded skill router, Device UI logic, provider-only prompt handling
+
+**Skill Safety Policy**:
+Per-skill configuration that can require confirmation or disable selected actions before a **Skill** executes them.
+_Avoid_: global prompt warning, hard-coded safety rule
+
+**Skill Action Result**:
+The structured outcome returned by a **Skill** after it attempts a typed action, optionally including the user-facing response text.
+_Avoid_: raw API response, provider answer, device event
+
 **Surface Host Contract**:
 The boundary of state, actions, and capabilities that the **Device UI** exposes to a **Device Surface Plugin**.
 _Avoid_: internal client access, plugin SDK, backend API
@@ -59,6 +95,10 @@ _Avoid_: chat call, message request
 **Device Wake Phrase**:
 A spoken phrase detected locally by the **Device UI** that makes the prompt composer available.
 _Avoid_: hotphrase, Brain wake word, server wake command
+
+**Voice Control**:
+The full spoken interaction path where a **Device Wake Phrase** leads to speech capture, transcription, a **Prompt Exchange**, and a spoken or displayed response.
+_Avoid_: wake phrase, text prompt, development shortcut
 
 **Device Runtime**:
 A local companion process on the device that owns hardware-facing device capabilities for the **Device UI**.
@@ -112,6 +152,20 @@ _Avoid_: smoke check, fast check
 - A **Device Surface Plugin** provides a **Device Surface** and does not talk directly to the **Brain Server**.
 - A **Device Surface Plugin** may fetch its own presentation data but can only use Nexus state and actions through the **Surface Host Contract**.
 - A **Device Surface** must preserve the **Prompt Exchange** interaction loop by providing a way to enter prompts and display results.
+- A **Skill** is installed into Nexus and loaded by the **Brain Server** without requiring changes to the core app codebase.
+- A **Skill Registry** lets the Nexus CLI resolve names such as `home-assistant-skill` without hard-coding those names into the Brain Server.
+- A **Skill Host** loads installed **Skills** from their **Skill Manifests**.
+- A **Skill Manifest** must declare enough capability metadata for the **Assistant Orchestrator** to consider the Skill without executing Skill code.
+- **Skill Configuration** is stored separately from the installed **Skill** package.
+- A **Skill** can participate in a **Prompt Exchange** only through Brain-owned orchestration.
+- The **Assistant Orchestrator** discovers what installed **Skills** can do from Skill-provided metadata rather than hard-coded skill-specific routing.
+- **Skills** describe capabilities and execute typed actions; the **Brain Server** owns AI reasoning for selecting and parameterizing those actions.
+- A **Skill Safety Policy** is enforced by the **Brain Server** before a **Skill** action executes.
+- The **Home Assistant Skill** should execute actions without confirmation by default unless its **Skill Safety Policy** says otherwise.
+- The first **Home Assistant Skill** should discover entities, read entity state, call common Home Assistant services, and resolve natural language using areas, friendly names, and entity IDs.
+- A **Skill** returns a **Skill Action Result** to the **Brain Server**; the result can include response text for the **Prompt Exchange**.
+- The first **Skill Host** can run **Skills** inside the **Brain Server** process while preserving a boundary that can later move Skills to a separate runtime.
+- A **Home Assistant Skill** is a **Skill**, not a **Device Surface Plugin**.
 - A **Device Surface Plugin** can define **Surface Settings** with defaults.
 - The **Brain Server** stores **Surface Settings** per **Device UI** and active **Device Surface**.
 - The **Brain Server** stores an **Active Device Surface** per **Device UI** so each device can change surfaces without a device power cycle.
@@ -123,6 +177,7 @@ _Avoid_: smoke check, fast check
 - In the primary **Local Deployment**, the **Device UI** and **Brain Server** may run on separate machines.
 - A **Kiosk Deployment** runs the **Device UI** without requiring manual browser startup after boot.
 - A **Device Wake Phrase** is detected by a local **Device Runtime** and consumed by the **Device UI**, not the **Brain Server**.
+- **Voice Control** is required for the Home Assistant experience but can follow the first text-based **Skill** invocation slice.
 - The **Device Runtime** sends local WebSocket events to the **Device UI** for device wake phrase detection.
 - A device wake phrase detection event is named `device-wake-phrase.detected` and carries detection time plus phrase text.
 - Local development must let a browser-served **Device UI** exercise wake phrase behavior with a **Development Wake Shortcut** enabled by environment configuration.
@@ -151,6 +206,36 @@ _Avoid_: smoke check, fast check
 
 > **Dev:** "Can a **Device Surface Plugin** fetch weather or photo data for its own display?"
 > **Domain expert:** "Yes, if it stays within its own presentation needs and uses the **Surface Host Contract** for Nexus-specific state and actions."
+
+> **Dev:** "Should Home Assistant control be a **Device Surface Plugin**?"
+> **Domain expert:** "No. Home Assistant control is a **Skill** loaded by the **Brain Server** during a **Prompt Exchange**; it should not depend on the active **Device Surface**."
+
+> **Dev:** "Does the first **Home Assistant Skill** slice need full **Voice Control**?"
+> **Domain expert:** "No. The first slice can use the existing text **Prompt Exchange**, but **Voice Control** is a near-term requirement for the intended experience."
+
+> **Dev:** "Does installing a **Skill** mean editing the Brain Server source code?"
+> **Domain expert:** "No. A **Skill** is discovered and invoked through the **Skill Host**, even if the first host runs skills in the Brain Server process."
+
+> **Dev:** "Does `nexus install home-assistant-skill` mean the Brain Server already knows about Home Assistant?"
+> **Domain expert:** "No. The Nexus CLI resolves the name through a **Skill Registry**, installs the package, and the **Skill Host** discovers it from its manifest."
+
+> **Dev:** "How does the **Assistant Orchestrator** know what an installed **Skill** can do?"
+> **Domain expert:** "It reads the **Skill Manifest** and uses declared capability metadata before invoking Skill code."
+
+> **Dev:** "Does installing a **Skill** also configure credentials for it?"
+> **Domain expert:** "No. Installation puts the package on disk; **Skill Configuration** stores local settings and secrets for one deployment."
+
+> **Dev:** "Can a **Skill** bring its own model call to understand a request?"
+> **Domain expert:** "Not in v1. A **Skill** describes capabilities and executes typed actions; the **Brain Server** uses the AI Provider for intent and parameter selection."
+
+> **Dev:** "Should turning off lights through the **Home Assistant Skill** require confirmation?"
+> **Domain expert:** "No. The **Home Assistant Skill** should execute without confirmation by default; confirmations are only added through **Skill Safety Policy** configuration."
+
+> **Dev:** "Does Home Assistant have to provide the final assistant sentence?"
+> **Domain expert:** "No. The **Home Assistant Skill** returns a **Skill Action Result** with optional response text; the **Brain Server** uses that in the **Prompt Exchange**."
+
+> **Dev:** "Should the first **Home Assistant Skill** edit automations or Home Assistant configuration?"
+> **Domain expert:** "No. The first scope is entity discovery, state reads, common service calls, and natural-language entity resolution."
 
 > **Dev:** "Can a visual-only **Device Surface** skip prompt input and assistant results?"
 > **Domain expert:** "No. Every **Device Surface** must preserve the **Prompt Exchange** interaction loop, even if its standby view is mostly visual."
@@ -204,6 +289,7 @@ _Avoid_: smoke check, fast check
 
 - "Device UI" was clarified to mean the fullscreen touchscreen client, not AI orchestration, provider credentials, or skill execution.
 - "Device UI plugin" was clarified as **Device Surface Plugin**, meaning a replaceable rendered surface inside the **Device UI**, not a replacement client or Brain extension.
+- "Home Assistant plugin" was clarified as **Home Assistant Skill**, meaning an installable Brain-owned assistant capability rather than a presentation plugin.
 - "Plugin isolation" was clarified to allow self-contained presentation behavior while requiring Nexus-specific state and actions to pass through the **Surface Host Contract**.
 - "Selected surface" was clarified as a per-device **Active Device Surface**, stored by the **Brain Server** rather than chosen manually on each device startup.
 - "AI provider flexibility" was clarified to mean provider calls are implemented behind the **Brain Server**, not exposed directly to UI apps.

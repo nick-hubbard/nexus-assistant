@@ -63,6 +63,8 @@ export class InteractionLog {
     skillId: string;
     action: string;
     status: string;
+    input?: unknown;
+    responseText?: string;
     occurredAt?: string;
     error?: unknown;
   }) {
@@ -76,6 +78,8 @@ export class InteractionLog {
         skillId: options.skillId,
         action: options.action,
         status: options.status,
+        ...(options.input === undefined ? {} : { input: options.input }),
+        ...(options.responseText === undefined ? {} : { responseText: options.responseText }),
         ...(options.error === undefined
           ? {}
           : {

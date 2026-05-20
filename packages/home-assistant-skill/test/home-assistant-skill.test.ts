@@ -80,6 +80,135 @@ describe("Home Assistant Skill", () => {
     });
   });
 
+  it("accepts query as a prompt alias for model-selected Skill input", async () => {
+    const skill = new HomeAssistantSkill(async () =>
+      jsonResponse([
+        {
+          entity_id: "light.kitchen",
+          state: "on",
+          attributes: { friendly_name: "Kitchen lights", area: "Kitchen" },
+        },
+      ]),
+    );
+
+    const result = await skill.invoke({
+      action: "read-state",
+      input: { query: "are the kitchen lights on?" },
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      responseText: "Kitchen lights is on.",
+    });
+  });
+
+  it("accepts a raw prompt string for model-selected Skill input", async () => {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const skill = new HomeAssistantSkill(async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (String(url).endsWith("/api/states")) {
+        return jsonResponse([
+          {
+            entity_id: "light.kitchen",
+            state: "off",
+            attributes: { friendly_name: "Kitchen lights", area: "Kitchen" },
+          },
+          {
+            entity_id: "light.living_room",
+            state: "off",
+            attributes: { friendly_name: "Living room lights", area: "Living Room" },
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    const result = await skill.invoke({
+      action: "turn-on",
+      input: "Turn on the living room lights",
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      responseText: "Done, I turned on Living room lights.",
+      data: {
+        domain: "light",
+        service: "turn_on",
+        entityIds: ["light.living_room"],
+      },
+    });
+    expect(requests[1]).toMatchObject({
+      url: "http://ha.local:8123/api/services/light/turn_on",
+      init: {
+        method: "POST",
+        body: JSON.stringify({ entity_id: ["light.living_room"] }),
+      },
+    });
+  });
+
+  it("ignores unknown model-selected Skill input fields", async () => {
+    const skill = new HomeAssistantSkill(async () => jsonResponse([]));
+
+    const result = await skill.invoke({
+      action: "read-state",
+      input: { unsupported: "kitchen" },
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      responseText: "I could not determine which Home Assistant entity type to read.",
+      error: { code: "entity-domain-not-found" },
+    });
+  });
+
+  it("falls back to all lights when model-selected input only includes unknown fields", async () => {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const skill = new HomeAssistantSkill(async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (String(url).endsWith("/api/states")) {
+        return jsonResponse([
+          {
+            entity_id: "light.kitchen",
+            state: "off",
+            attributes: { friendly_name: "Kitchen lights", area: "Kitchen" },
+          },
+          {
+            entity_id: "light.living_room",
+            state: "off",
+            attributes: { friendly_name: "Living room lights", area: "Living Room" },
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+
+    const result = await skill.invoke({
+      action: "turn-on",
+      input: { device: "lights" },
+      configuration: { baseUrl: "http://ha.local:8123" },
+    });
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      responseText: "Done, I turned on Kitchen lights, Living room lights.",
+      data: {
+        domain: "light",
+        service: "turn_on",
+        entityIds: ["light.kitchen", "light.living_room"],
+      },
+    });
+    expect(requests[1]).toMatchObject({
+      url: "http://ha.local:8123/api/services/light/turn_on",
+      init: {
+        method: "POST",
+        body: JSON.stringify({ entity_id: ["light.kitchen", "light.living_room"] }),
+      },
+    });
+  });
+
   it("discovers light entities by friendly name and calls the turn-off service", async () => {
     const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
     const skill = new HomeAssistantSkill(async (url, init) => {
