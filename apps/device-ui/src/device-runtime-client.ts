@@ -28,6 +28,18 @@ export type DeviceSpeechCaptureStartedEvent = z.infer<typeof DeviceSpeechCapture
 export type DeviceSpeechTranscribedEvent = z.infer<typeof DeviceSpeechTranscribedEventSchema>;
 export type DeviceRuntimeEvent = z.infer<typeof DeviceRuntimeEventSchema>;
 
+const SpeakPromptExchangeResponseCommandSchema = z.object({
+  type: z.literal("prompt-exchange-response.speak"),
+  deviceId: z.string().min(1),
+  promptExchangeId: z.string().min(1),
+  responseText: z.string().min(1),
+  replaceCurrent: z.literal(true),
+});
+
+export type SpeakPromptExchangeResponseCommand = z.input<
+  typeof SpeakPromptExchangeResponseCommandSchema
+>;
+
 interface DeviceRuntimeClientOptions {
   webSocketUrl?: string;
 }
@@ -43,6 +55,19 @@ export function createDeviceRuntimeClient(options: DeviceRuntimeClientOptions = 
     options.webSocketUrl ?? process.env.NEXT_PUBLIC_DEVICE_RUNTIME_WS_URL ?? "ws://127.0.0.1:4318";
 
   return {
+    speakPromptExchangeResponse(command: SpeakPromptExchangeResponseCommand) {
+      const parsedCommand = SpeakPromptExchangeResponseCommandSchema.parse(command);
+      const socket = new WebSocket(`${webSocketUrl}/commands`);
+      const serializedCommand = JSON.stringify(parsedCommand);
+
+      const sendCommand = () => {
+        socket.send(serializedCommand);
+        socket.close();
+      };
+
+      socket.addEventListener("open", sendCommand, { once: true });
+    },
+
     connect(handlers: DeviceRuntimeConnectionHandlers) {
       const socket = new WebSocket(`${webSocketUrl}/events`);
       let active = true;

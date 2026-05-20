@@ -166,7 +166,13 @@ export function DeviceClient() {
           setPromptState("completed");
           setAssistantResponse(event.payload.response);
           if (event.promptExchangeId === spokenPromptExchangeIdRef.current) {
-            speakAssistantResponse(event.payload.response);
+            deviceRuntimeClient.speakPromptExchangeResponse({
+              type: "prompt-exchange-response.speak",
+              deviceId,
+              promptExchangeId: event.promptExchangeId,
+              responseText: event.payload.response,
+              replaceCurrent: true,
+            });
             spokenPromptExchangeIdRef.current = undefined;
           }
         }
@@ -180,7 +186,7 @@ export function DeviceClient() {
         }
       },
     });
-  }, [client]);
+  }, [client, deviceRuntimeClient]);
 
   const ActiveDeviceSurface = activeDeviceSurface.Surface;
 
@@ -243,13 +249,4 @@ function getDeviceLocale() {
 
 function getDeviceTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
-function speakAssistantResponse(response: string) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    return;
-  }
-
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(new SpeechSynthesisUtterance(response));
 }
