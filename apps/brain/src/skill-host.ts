@@ -92,9 +92,11 @@ export class SkillHostError extends Error {
 
 export class SkillHost {
   private readonly installedSkillsDir: string;
+  private readonly dataDir: string;
   private readonly loadAdapter: SkillAdapterLoader;
 
   constructor(options: { dataDir: string; loadAdapter?: SkillAdapterLoader }) {
+    this.dataDir = options.dataDir;
     this.installedSkillsDir = installedSkillsDirForDataDir(options.dataDir);
     this.loadAdapter = options.loadAdapter ?? loadInProcessAdapter;
   }
@@ -128,7 +130,11 @@ export class SkillHost {
     const entrypointPath = path.resolve(skill.packagePath, skill.manifest.entrypoint);
     await assertEntrypointExists(entrypointPath, skill.manifest.id);
     const adapter = await this.loadAdapter(entrypointPath, skill.manifest);
-    const result = await adapter.invoke(request);
+    const result = await adapter.invoke({
+      ...request,
+      configuration:
+        request.configuration ?? (await readSkillConfiguration(this.dataDir, skill.manifest.id)),
+    });
 
     return SkillActionResultSchema.parse(result);
   }
@@ -174,6 +180,10 @@ export function installedSkillsDirForDataDir(dataDir: string) {
   return path.join(dataDir, "installed-skills");
 }
 
+export function skillConfigurationPath(dataDir: string, skillId: string) {
+  return path.join(dataDir, "skill-configurations", `${skillId}.json`);
+}
+
 async function assertEntrypointExists(entrypointPath: string, skillId: string) {
   await access(entrypointPath).catch((error: unknown) => {
     throw new SkillHostError(
@@ -212,4 +222,17 @@ function isSkillAdapter(value: unknown): value is SkillAdapter {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+async function readSkillConfiguration(dataDir: string, skillId: string) {
+  const configurationJson = await readFile(skillConfigurationPath(dataDir, skillId), "utf8").catch(
+    (error: unknown) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    },
+  );
+
+  return configurationJson === undefined ? undefined : JSON.parse(configurationJson);
 }

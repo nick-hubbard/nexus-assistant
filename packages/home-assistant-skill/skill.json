@@ -24,7 +24,12 @@
         "run-script",
         "set-temperature"
       ],
-      "examples": ["turn off the kitchen lights", "set the thermostat to 70"]
+      "examples": [
+        "turn on the lights",
+        "turn on the living room lights",
+        "turn off the kitchen lights",
+        "set the thermostat to 70"
+      ]
     }
   ],
   "configurationSchema": {
@@ -50,7 +55,7 @@
     }
   },
   "safetyDefaults": {
-    "confirmation": "required",
+    "confirmation": "not-required",
     "disabledActions": []
   }
 }

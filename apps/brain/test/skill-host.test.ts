@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   installedSkillsDirForDataDir,
+  skillConfigurationPath,
   type SkillAdapter,
   SkillHost,
   SkillHostError,
@@ -162,6 +163,52 @@ describe("Skill Host", () => {
       responseText: "Handled turn-off.",
       data: { entityId: "light.kitchen" },
     });
+  });
+
+  it("loads Brain-owned Skill Configuration when an invocation does not provide configuration", async () => {
+    const dataDir = await createDataDir();
+    await writeSkillPackage(dataDir, "fake-light-skill", {
+      manifest: validManifest({
+        id: "fake-light-skill",
+      }),
+      entrypointContents: "export default {};",
+    });
+    await mkdir(path.dirname(skillConfigurationPath(dataDir, "fake-light-skill")), {
+      recursive: true,
+    });
+    await writeFile(
+      skillConfigurationPath(dataDir, "fake-light-skill"),
+      JSON.stringify({ baseUrl: "http://homeassistant.local:8123", accessToken: "secret" }),
+    );
+    const requests: unknown[] = [];
+
+    const result = await new SkillHost({
+      dataDir,
+      loadAdapter: async () => ({
+        invoke: (request) => {
+          requests.push(request);
+          return {
+            status: "succeeded",
+            responseText: "Configured.",
+          };
+        },
+      }),
+    }).invoke("fake-light-skill", {
+      action: "discover-entities",
+      input: {},
+    });
+
+    expect(result).toMatchObject({ status: "succeeded" });
+    expect(requests).toEqual([
+      {
+        action: "discover-entities",
+        input: {},
+        configuration: {
+          baseUrl: "http://homeassistant.local:8123",
+          accessToken: "secret",
+        },
+      },
+    ]);
   });
 
   it("rejects invocation for Skills that are not installed", async () => {

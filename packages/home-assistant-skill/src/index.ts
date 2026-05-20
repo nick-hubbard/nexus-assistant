@@ -44,16 +44,23 @@ const ConfigurationSchema = z
 
 export type HomeAssistantSkillConfiguration = z.infer<typeof ConfigurationSchema>;
 
-const ActionInputSchema = z
-  .object({
-    prompt: z.string().trim().min(1).optional(),
-    entityId: z.string().trim().min(1).optional(),
-    area: z.string().trim().min(1).optional(),
-    name: z.string().trim().min(1).optional(),
-    temperature: z.number().optional(),
-  })
-  .strict()
-  .default({});
+const ActionInputSchema = z.preprocess(
+  (input) => (typeof input === "string" ? { prompt: input } : input),
+  z
+    .object({
+      prompt: z.string().trim().min(1).optional(),
+      query: z.string().trim().min(1).optional(),
+      entityId: z.string().trim().min(1).optional(),
+      area: z.string().trim().min(1).optional(),
+      name: z.string().trim().min(1).optional(),
+      temperature: z.number().optional(),
+    })
+    .strip()
+    .transform(({ query, ...input }) => ({
+      ...input,
+      prompt: input.prompt ?? query,
+    })),
+);
 
 const HomeAssistantStateSchema = z
   .object({
@@ -130,7 +137,12 @@ export class HomeAssistantSkill implements SkillAdapter {
       };
     }
 
-    const input = ActionInputSchema.parse(request.input);
+    const inputResult = ActionInputSchema.safeParse(request.input ?? {});
+    if (!inputResult.success) {
+      return failed("I could not understand the Home Assistant request.", "invalid-action-input");
+    }
+
+    const input = inputResult.data;
     const states = await this.fetchStates(configuration.data);
     const discoveredEntities = discoverEntities(states);
 
@@ -210,17 +222,15 @@ export class HomeAssistantSkill implements SkillAdapter {
     action: MappedAction,
     serviceData: Record<string, unknown>,
   ) {
-    return this.fetchImpl(
-      urlFor(configuration.baseUrl, `/api/services/${action.domain}/${action.service}`),
-      {
-        method: "POST",
-        headers: {
-          ...headersFor(configuration),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(serviceData),
+    const url = urlFor(configuration.baseUrl, `/api/services/${action.domain}/${action.service}`);
+    return this.fetchImpl(url, {
+      method: "POST",
+      headers: {
+        ...headersFor(configuration),
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify(serviceData),
+    });
   }
 }
 

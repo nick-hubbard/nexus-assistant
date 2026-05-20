@@ -3,7 +3,13 @@ import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { installedSkillsDirForDataDir, SkillManifestSchema } from "./skill-host.js";
+import {
+  installedSkillsDirForDataDir,
+  skillConfigurationPath,
+  SkillManifestSchema,
+} from "./skill-host.js";
+
+export { skillConfigurationPath } from "./skill-host.js";
 
 const SkillRegistrySchema = z.record(z.string().trim().min(1), z.string().trim().min(1));
 
@@ -51,10 +57,6 @@ export async function installSkill(
     id: manifest.id,
     packagePath: destination,
   };
-}
-
-export function skillConfigurationPath(dataDir: string, skillId: string) {
-  return path.join(dataDir, "skill-configurations", `${skillId}.json`);
 }
 
 export async function configureSkill(

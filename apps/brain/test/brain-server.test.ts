@@ -13,7 +13,12 @@ import type { BrainConfig } from "../src/config.js";
 import { createBrainServer } from "../src/index.js";
 import type { IssueReport, IssueReporter } from "../src/issue-reporter.js";
 import { type AiProvider, AiProviderError } from "../src/provider.js";
-import { installedSkillsDirForDataDir, type SkillAdapter, SkillHost } from "../src/skill-host.js";
+import {
+  installedSkillsDirForDataDir,
+  type SkillAdapter,
+  SkillHost,
+  skillConfigurationPath,
+} from "../src/skill-host.js";
 
 const openServers: Array<ReturnType<typeof createBrainServer>> = [];
 
@@ -148,18 +153,16 @@ describe("Brain Server", () => {
     expect(issueReporter.reports).toEqual([]);
   });
 
-  it("routes Prompt Exchanges through a Skill selected from manifest capabilities", async () => {
+  it("routes obvious Home Assistant Prompt Exchanges without waiting for provider selection", async () => {
     const dataDir = await createDataDir();
     await writeHomeAssistantSkillPackage(dataDir);
+    await writeHomeAssistantConfiguration(dataDir);
     const skillRequests: unknown[] = [];
     const provider = new QueueProvider([
       JSON.stringify({
         skillId: "home-assistant",
         action: "turn-off",
         input: { prompt: "turn off the lights" },
-        configuration: {
-          baseUrl: "http://homeassistant.local:8123",
-        },
       }),
     ]);
     const brain = await startBrainServer({
@@ -217,8 +220,7 @@ describe("Brain Server", () => {
         },
       },
     ]);
-    expect(provider.prompts[0]).toContain("Installed Skill Manifests");
-    expect(provider.prompts[0]).toContain("home-assistant.control");
+    expect(provider.prompts).toEqual([]);
 
     const loggedEvents = brain.interactionLog.allEvents();
     expect(loggedEvents.map((event) => event.type)).toEqual([
@@ -633,6 +635,17 @@ async function writeHomeAssistantSkillPackage(
         },
       },
       ...overrides,
+    }),
+  );
+}
+
+async function writeHomeAssistantConfiguration(dataDir: string) {
+  const configurationPath = skillConfigurationPath(dataDir, "home-assistant");
+  await mkdir(path.dirname(configurationPath), { recursive: true });
+  await writeFile(
+    configurationPath,
+    JSON.stringify({
+      baseUrl: "http://homeassistant.local:8123",
     }),
   );
 }
