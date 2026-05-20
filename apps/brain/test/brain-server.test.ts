@@ -138,6 +138,7 @@ describe("Brain Server", () => {
     const loggedEvents = brain.interactionLog.allEvents();
     expect(loggedEvents.map((event) => event.type)).toEqual([
       "prompt.requested",
+      "provider.call",
       "provider.response",
     ]);
     expect(loggedEvents.every((event) => event.correlation_id === accepted.promptExchangeId)).toBe(
@@ -148,6 +149,14 @@ describe("Brain Server", () => {
       prompt: "What is next?",
     });
     expect(JSON.parse(String(loggedEvents[1]?.payload_json))).toMatchObject({
+      provider: "fake",
+      purpose: "prompt-response",
+      status: "succeeded",
+      promptLength: "What is next?".length,
+      responseLength: "Fake provider response: What is next?".length,
+      chunkCount: 2,
+    });
+    expect(JSON.parse(String(loggedEvents[2]?.payload_json))).toMatchObject({
       response: "Fake provider response: What is next?",
     });
     expect(issueReporter.reports).toEqual([]);
@@ -235,13 +244,10 @@ describe("Brain Server", () => {
     });
   });
 
-  it("keeps ordinary prompts on the AI Provider response path when no Skill is selected", async () => {
+  it("skips provider Skill selection for prompts outside the installed Skill domain", async () => {
     const dataDir = await createDataDir();
     await writeHomeAssistantSkillPackage(dataDir);
-    const provider = new QueueProvider([
-      JSON.stringify({ skillId: null, action: null }),
-      "Ordinary answer.",
-    ]);
+    const provider = new QueueProvider(["Ordinary answer."]);
     const brain = await startBrainServer({
       dataDir,
       provider,
@@ -290,7 +296,65 @@ describe("Brain Server", () => {
         response: "Ordinary answer.",
       },
     });
-    expect(provider.prompts).toHaveLength(2);
+    expect(provider.prompts).toEqual(["What is next?"]);
+  });
+
+  it("routes natural Home Assistant control phrasing without provider Skill selection", async () => {
+    const dataDir = await createDataDir();
+    await writeHomeAssistantSkillPackage(dataDir);
+    await writeHomeAssistantConfiguration(dataDir);
+    const skillRequests: unknown[] = [];
+    const provider = new QueueProvider([]);
+    const brain = await startBrainServer({
+      dataDir,
+      provider,
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => fakeHomeAssistantAdapter(skillRequests),
+      }),
+    });
+    const socket = await connectEvents(brain);
+    const messages = collectMessages(socket, 3);
+
+    const response = await fetch(`${baseUrl(brain)}/prompts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deviceId: "dev_kitchen-display",
+        prompt: "turn the office lights on",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    const accepted = PromptExchangeAcceptedSchema.parse(await response.json());
+    const events = await messages;
+
+    expect(response.status).toBe(202);
+    expect(events.map((event) => event.type)).toEqual([
+      "prompt-exchange.started",
+      "prompt-exchange.delta",
+      "prompt-exchange.completed",
+    ]);
+    expect(events[1]).toMatchObject({
+      promptExchangeId: accepted.promptExchangeId,
+      payload: {
+        status: "streaming",
+        delta: "Done, I turned on Kitchen lights.",
+        sequence: 0,
+      },
+    });
+    expect(skillRequests).toEqual([
+      {
+        action: "turn-on",
+        input: { prompt: "turn the office lights on" },
+        configuration: {
+          baseUrl: "http://homeassistant.local:8123",
+        },
+      },
+    ]);
+    expect(provider.prompts).toEqual([]);
   });
 
   it("publishes Skill refusal responses without invoking disabled actions", async () => {
@@ -515,6 +579,12 @@ describe("Brain Server", () => {
       source: "ai-provider",
       category: "provider",
     });
+    expect(brain.interactionLog.allEvents().map((event) => event.type)).toEqual([
+      "prompt.requested",
+      "provider.call",
+      "runtime.error",
+      "system-issue.reported",
+    ]);
   });
 
   it("validates configuration at startup", () => {
@@ -529,6 +599,11 @@ describe("Brain Server", () => {
           codexCommand: "codex",
           codexArgs: ["exec"],
           codexTimeoutMs: 120000,
+          openaiBaseUrl: "https://api.openai.com/v1",
+          openaiModel: "gpt-5.5",
+          openaiTimeoutMs: 30000,
+          openaiReasoningEffort: "low",
+          openaiVerbosity: "low",
         },
       }),
     ).toThrow();
@@ -567,6 +642,11 @@ function createTestConfig(overrides: Partial<BrainConfig>) {
     codexCommand: "codex",
     codexArgs: ["exec"],
     codexTimeoutMs: 120000,
+    openaiBaseUrl: "https://api.openai.com/v1",
+    openaiModel: "gpt-5.5",
+    openaiTimeoutMs: 30000,
+    openaiReasoningEffort: "low" as const,
+    openaiVerbosity: "low" as const,
     ...overrides,
   };
 }
@@ -673,7 +753,7 @@ function fakeHomeAssistantAdapter(requests: unknown[]): SkillAdapter {
       }
       return {
         status: "succeeded",
-        responseText: "Done, I turned off Kitchen lights.",
+        responseText: `Done, I turned ${request.action === "turn-on" ? "on" : "off"} Kitchen lights.`,
         data: { entityIds: ["light.kitchen"] },
       };
     },

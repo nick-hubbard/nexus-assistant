@@ -77,7 +77,14 @@ Then set the Brain Server provider:
 BRAIN_AI_PROVIDER=openai-codex
 ```
 
-The `openai-codex` Subscription Provider uses the local Codex CLI as a runtime bridge. By default it runs `codex exec "<prompt>"`; override `BRAIN_CODEX_COMMAND`, `BRAIN_CODEX_ARGS`, or `BRAIN_CODEX_TIMEOUT_MS` if your Codex install needs a different command, profile, or timeout.
+The `openai-codex` Subscription Provider uses the local Codex CLI as a runtime bridge. By default it runs `codex exec --ephemeral "<prompt>"`; override `BRAIN_CODEX_COMMAND`, `BRAIN_CODEX_ARGS`, or `BRAIN_CODEX_TIMEOUT_MS` if your Codex install needs a different command, profile, or timeout.
+
+For lower local latency on macOS with the Codex desktop app installed, point directly at the bundled binary instead of launching through `npx`:
+
+```sh
+BRAIN_CODEX_COMMAND=/Applications/Codex.app/Contents/Resources/codex
+BRAIN_CODEX_ARGS=exec --ephemeral
+```
 
 If your global `codex` wrapper is unavailable but `npx @openai/codex@latest exec` works, use:
 
@@ -85,6 +92,15 @@ If your global `codex` wrapper is unavailable but `npx @openai/codex@latest exec
 BRAIN_CODEX_COMMAND=npx
 BRAIN_CODEX_ARGS=-y @openai/codex@latest exec
 ```
+
+To test direct OpenAI Platform API latency instead of the Codex CLI bridge, set:
+
+```sh
+BRAIN_AI_PROVIDER=openai-api
+BRAIN_OPENAI_API_KEY=sk-...
+```
+
+The `openai-api` Provider uses the OpenAI Responses API and streams response text deltas into the existing Prompt Exchange flow. It defaults to `BRAIN_OPENAI_MODEL=gpt-5.5`, `BRAIN_OPENAI_REASONING_EFFORT=low`, and `BRAIN_OPENAI_VERBOSITY=low` for a latency-sensitive device assistant, and can be tuned through the environment settings below.
 
 ## Raspberry Pi Kiosk Deployment
 
@@ -105,11 +121,17 @@ Brain Server settings live in `apps/brain/.env`:
 - `BRAIN_PORT`: HTTP and WebSocket port. Defaults to `4317`.
 - `BRAIN_HOST`: Host interface. Defaults to `127.0.0.1`.
 - `BRAIN_VERSION`: Version returned by `/health`. Defaults to `0.1.0`.
-- `BRAIN_AI_PROVIDER`: AI Provider mode. Use `fake` for local development or `openai-codex` for the Codex CLI bridge.
+- `BRAIN_AI_PROVIDER`: AI Provider mode. Use `fake` for local development, `openai-codex` for the Codex CLI bridge, or `openai-api` for direct OpenAI Platform API calls.
 - `BRAIN_DATA_DIR`: Directory for Brain Files and Interaction Logs.
 - `BRAIN_CODEX_COMMAND`: Command used by the `openai-codex` bridge. Defaults to `codex`.
-- `BRAIN_CODEX_ARGS`: Whitespace-separated arguments before the prompt. Defaults to `exec`.
+- `BRAIN_CODEX_ARGS`: Whitespace-separated arguments before the prompt. Defaults to `exec --ephemeral`.
 - `BRAIN_CODEX_TIMEOUT_MS`: Bridge timeout in milliseconds. Defaults to `120000`.
+- `BRAIN_OPENAI_API_KEY`: OpenAI Platform API key used by the `openai-api` Provider. Falls back to `OPENAI_API_KEY`.
+- `BRAIN_OPENAI_BASE_URL`: OpenAI-compatible API base URL. Defaults to `https://api.openai.com/v1`.
+- `BRAIN_OPENAI_MODEL`: Responses API model used by the `openai-api` Provider. Defaults to `gpt-5.5`.
+- `BRAIN_OPENAI_TIMEOUT_MS`: Direct API request timeout in milliseconds. Defaults to `30000`.
+- `BRAIN_OPENAI_REASONING_EFFORT`: Reasoning effort for the `openai-api` Provider. Defaults to `low`.
+- `BRAIN_OPENAI_VERBOSITY`: Text verbosity for the `openai-api` Provider. Defaults to `low`.
 - `DISCORD_WEBHOOK_URL`: Optional Issue Reporter destination for System Issues.
 
 Device UI settings live in `apps/device-ui/.env`:

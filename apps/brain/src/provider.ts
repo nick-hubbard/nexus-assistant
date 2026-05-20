@@ -1,5 +1,6 @@
 export interface ProviderPrompt {
   prompt: string;
+  purpose?: "skill-selection" | "prompt-response";
 }
 
 export interface ProviderResponseChunk {

@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 
 export type InteractionLogEventType =
   | "prompt.requested"
+  | "provider.call"
   | "provider.response"
   | "skill.invocation"
   | "system-issue.reported"
@@ -54,6 +55,48 @@ export class InteractionLog {
       type: "provider.response",
       occurredAt: options.occurredAt,
       payload: { response: options.response },
+    });
+  }
+
+  recordProviderCall(options: {
+    promptExchangeId: string;
+    deviceId: string;
+    providerName: string;
+    purpose: string;
+    status: "succeeded" | "failed";
+    promptLength: number;
+    responseLength: number;
+    chunkCount: number;
+    durationMs: number;
+    firstDeltaMs?: number;
+    startedAt?: string;
+    completedAt?: string;
+    error?: unknown;
+  }) {
+    this.record({
+      correlationId: options.promptExchangeId,
+      promptExchangeId: options.promptExchangeId,
+      deviceId: options.deviceId,
+      type: "provider.call",
+      occurredAt: options.completedAt,
+      payload: {
+        provider: options.providerName,
+        purpose: options.purpose,
+        status: options.status,
+        promptLength: options.promptLength,
+        responseLength: options.responseLength,
+        chunkCount: options.chunkCount,
+        durationMs: options.durationMs,
+        ...(options.firstDeltaMs === undefined ? {} : { firstDeltaMs: options.firstDeltaMs }),
+        ...(options.startedAt === undefined ? {} : { startedAt: options.startedAt }),
+        ...(options.completedAt === undefined ? {} : { completedAt: options.completedAt }),
+        ...(options.error === undefined
+          ? {}
+          : {
+              error:
+                options.error instanceof Error ? { message: options.error.message } : options.error,
+            }),
+      },
     });
   }
 

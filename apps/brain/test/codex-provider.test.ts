@@ -5,6 +5,7 @@ import {
   type CodexCommand,
   type CodexCommandResult,
   normalizeCodexOutput,
+  streamCodexCommand,
 } from "../src/codex-provider.js";
 import { AiProviderError } from "../src/provider.js";
 
@@ -49,6 +50,24 @@ describe("Codex CLI Provider", () => {
 
     expect(commands).toEqual([{ command: "codex", args: ["exec", "Hello"] }]);
     expect(chunks).toEqual([{ delta: "Codex response." }]);
+  });
+
+  it("streams stdout chunks from the bridge process before it exits", async () => {
+    const chunks = [];
+    const command = {
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('First '); setTimeout(() => process.stdout.write('second.'), 25);",
+        "ignored prompt",
+      ],
+    };
+
+    for await (const chunk of streamCodexCommand(command, { timeoutMs: 5000 })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([{ delta: "First " }, { delta: "second." }]);
   });
 
   it("surfaces timeout diagnostics", async () => {

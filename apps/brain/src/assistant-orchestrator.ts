@@ -77,10 +77,15 @@ export class AssistantOrchestrator {
       return fastDecision;
     }
 
+    if (canSkipProviderSkillSelection(prompt, installedSkills)) {
+      return { skillId: null, action: null };
+    }
+
     const orchestratorPrompt = buildOrchestratorPrompt(prompt, installedSkills);
     const response = await collectProviderResponse(
       this.options.provider.complete({
         prompt: orchestratorPrompt,
+        purpose: "skill-selection",
       }),
     );
 
@@ -120,13 +125,13 @@ function inferHomeAssistantAction(prompt: string) {
       normalized,
     );
 
-  if (/\b(turn|switch)\s+on\b/.test(normalized) && mentionsKnownEntityType) {
+  if (/\b(turn|switch)\b.*\bon\b/.test(normalized) && mentionsKnownEntityType) {
     return /\b(switch|switches)\b/.test(normalized) && !/\b(light|lights)\b/.test(normalized)
       ? "switch-on"
       : "turn-on";
   }
 
-  if (/\b(turn|switch)\s+off\b/.test(normalized) && mentionsKnownEntityType) {
+  if (/\b(turn|switch)\b.*\boff\b/.test(normalized) && mentionsKnownEntityType) {
     return /\b(switch|switches)\b/.test(normalized) && !/\b(light|lights)\b/.test(normalized)
       ? "switch-off"
       : "turn-off";
@@ -144,7 +149,10 @@ function inferHomeAssistantAction(prompt: string) {
     return "run-script";
   }
 
-  if (/\b(are|is|what|status|state)\b/.test(normalized) && mentionsKnownEntityType) {
+  if (
+    /\b(are|is|what|which|list|show|tell|status|state)\b/.test(normalized) &&
+    mentionsKnownEntityType
+  ) {
     return "read-state";
   }
 
@@ -153,6 +161,23 @@ function inferHomeAssistantAction(prompt: string) {
   }
 
   return undefined;
+}
+
+function canSkipProviderSkillSelection(prompt: string, installedSkills: InstalledSkill[]) {
+  if (
+    installedSkills.length === 0 ||
+    installedSkills.some((skill) => skill.manifest.id !== "home-assistant")
+  ) {
+    return false;
+  }
+
+  return !mentionsHomeAssistantDomain(prompt);
+}
+
+function mentionsHomeAssistantDomain(prompt: string) {
+  return /\b(home assistant|entity|entities|light|lights|switch|switches|scene|script|thermostat|temperature|climate|living room|kitchen|office|hallway|downstairs|upstairs)\b/.test(
+    normalizePrompt(prompt),
+  );
 }
 
 function skillSupportsAction(skill: InstalledSkill, action: string) {

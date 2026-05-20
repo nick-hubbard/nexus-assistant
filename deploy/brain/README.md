@@ -48,11 +48,20 @@ Required for Docker:
 Common optional settings:
 
 - `BRAIN_VERSION=0.1.0`: Version returned by `/health`.
-- `BRAIN_AI_PROVIDER=fake`: Docker-safe AI Provider mode. Use `openai-codex` only when the container can invoke a host-authenticated Codex bridge.
+- `BRAIN_AI_PROVIDER=fake`: Docker-safe AI Provider mode. Use `openai-api` for direct OpenAI Platform API calls, or `openai-codex` only when the container can invoke a host-authenticated Codex bridge.
 - `BRAIN_CODEX_COMMAND=codex`: Command used by the `openai-codex` bridge.
 - `BRAIN_CODEX_ARGS=exec`: Whitespace-separated arguments passed before the prompt.
 - `BRAIN_CODEX_TIMEOUT_MS=120000`: Bridge timeout in milliseconds.
+- `BRAIN_OPENAI_API_KEY`: OpenAI Platform API key used when `BRAIN_AI_PROVIDER=openai-api`. Falls back to `OPENAI_API_KEY`.
+- `BRAIN_OPENAI_MODEL=gpt-5.5`: Responses API model used by the `openai-api` Provider.
+- `BRAIN_OPENAI_TIMEOUT_MS=30000`: Direct API request timeout in milliseconds.
+- `BRAIN_OPENAI_REASONING_EFFORT=low`: Reasoning effort for the `openai-api` Provider.
+- `BRAIN_OPENAI_VERBOSITY=low`: Text verbosity for the `openai-api` Provider.
 - `DISCORD_WEBHOOK_URL`: Optional Issue Reporter destination for System Issues.
+
+## AI Provider Options
+
+For direct OpenAI Platform API testing, set `BRAIN_AI_PROVIDER=openai-api` and provide `BRAIN_OPENAI_API_KEY` or `OPENAI_API_KEY`. The adapter calls the OpenAI Responses API directly and streams response text deltas through the existing Prompt Exchange event flow.
 
 ## Subscription Provider Bridge Limitations
 

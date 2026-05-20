@@ -1,4 +1,5 @@
 import http from "node:http";
+import { performance } from "node:perf_hooks";
 import "dotenv/config";
 import {
   HealthResponseSchema,
@@ -24,6 +25,7 @@ import {
   createIssueReporter,
   type IssueReporter,
 } from "./issue-reporter.js";
+import { OpenAiApiProvider } from "./openai-api-provider.js";
 import { type AiProvider, AiProviderError } from "./provider.js";
 import { SkillHost } from "./skill-host.js";
 
@@ -228,7 +230,13 @@ async function runPromptExchange({
   let sequence = 0;
 
   try {
-    const orchestrator = new AssistantOrchestrator({ provider, skillHost });
+    const measuredProvider = createMeasuredProvider({
+      provider,
+      promptExchangeId,
+      deviceId,
+      interactionLog,
+    });
+    const orchestrator = new AssistantOrchestrator({ provider: measuredProvider, skillHost });
     const orchestratorResult = await orchestrator.invokeForPrompt(prompt);
     if (orchestratorResult) {
       response =
@@ -251,7 +259,7 @@ async function runPromptExchange({
       });
       publishPromptDelta({ promptExchangeId, delta: response, sequence, publish });
     } else {
-      for await (const chunk of provider.complete({ prompt })) {
+      for await (const chunk of measuredProvider.complete({ prompt, purpose: "prompt-response" })) {
         response += chunk.delta;
         publishPromptDelta({ promptExchangeId, delta: chunk.delta, sequence, publish });
         sequence += 1;
@@ -310,6 +318,69 @@ async function runPromptExchange({
       },
     }),
   );
+}
+
+function createMeasuredProvider(options: {
+  provider: AiProvider;
+  promptExchangeId: string;
+  deviceId: string;
+  interactionLog: InteractionLog;
+}): AiProvider {
+  return {
+    name: options.provider.name,
+    async *complete(providerPrompt) {
+      const startedAt = new Date().toISOString();
+      const started = performance.now();
+      let firstDeltaMs: number | undefined;
+      let responseLength = 0;
+      let chunkCount = 0;
+
+      try {
+        for await (const chunk of options.provider.complete(providerPrompt)) {
+          if (firstDeltaMs === undefined) {
+            firstDeltaMs = Math.round(performance.now() - started);
+          }
+          responseLength += chunk.delta.length;
+          chunkCount += 1;
+          yield chunk;
+        }
+
+        const completedAt = new Date().toISOString();
+        options.interactionLog.recordProviderCall({
+          promptExchangeId: options.promptExchangeId,
+          deviceId: options.deviceId,
+          providerName: options.provider.name,
+          purpose: providerPrompt.purpose ?? "prompt-response",
+          status: "succeeded",
+          promptLength: providerPrompt.prompt.length,
+          responseLength,
+          chunkCount,
+          durationMs: Math.round(performance.now() - started),
+          ...(firstDeltaMs === undefined ? {} : { firstDeltaMs }),
+          startedAt,
+          completedAt,
+        });
+      } catch (error) {
+        const completedAt = new Date().toISOString();
+        options.interactionLog.recordProviderCall({
+          promptExchangeId: options.promptExchangeId,
+          deviceId: options.deviceId,
+          providerName: options.provider.name,
+          purpose: providerPrompt.purpose ?? "prompt-response",
+          status: "failed",
+          promptLength: providerPrompt.prompt.length,
+          responseLength,
+          chunkCount,
+          durationMs: Math.round(performance.now() - started),
+          ...(firstDeltaMs === undefined ? {} : { firstDeltaMs }),
+          startedAt,
+          completedAt,
+          error,
+        });
+        throw error;
+      }
+    },
+  };
 }
 
 function publishPromptDelta(options: {
@@ -374,6 +445,17 @@ function createAiProvider(config: BrainConfig): AiProvider {
       args: config.codexArgs,
       timeoutMs: config.codexTimeoutMs,
       cwd: process.cwd(),
+    });
+  }
+
+  if (config.provider === "openai-api") {
+    return new OpenAiApiProvider({
+      baseUrl: config.openaiBaseUrl,
+      model: config.openaiModel,
+      timeoutMs: config.openaiTimeoutMs,
+      reasoningEffort: config.openaiReasoningEffort,
+      verbosity: config.openaiVerbosity,
+      ...(config.openaiApiKey ? { apiKey: config.openaiApiKey } : {}),
     });
   }
 
