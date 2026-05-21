@@ -1,0 +1,42 @@
+{
+  "id": "inspirational-message",
+  "name": "Inspirational Message",
+  "version": "0.1.0",
+  "entrypoint": "./src/index.ts",
+  "capabilities": [
+    {
+      "id": "inspirational-message.display",
+      "title": "Display inspirational messages",
+      "description": "Chooses an inspirational message for display on Nexus devices.",
+      "actions": ["display-random-message"],
+      "examples": [
+        "show an inspirational message every morning",
+        "display a random morning quote at 9 AM"
+      ]
+    }
+  ],
+  "configurationSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Title shown above the inspirational message."
+      },
+      "messages": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Optional custom inspirational messages."
+      }
+    }
+  },
+  "safetyDefaults": {
+    "confirmation": "not-required",
+    "disabledActions": []
+  }
+}

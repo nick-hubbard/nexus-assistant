@@ -6,12 +6,26 @@ import type { SpokenResponseRuntimeResult } from "../src/device-runtime-client";
 type BrainHandlers = {
   onConnected: () => void;
   onDisconnected: () => void;
-  onEvent: (event: {
-    type: "prompt-exchange.completed";
-    promptExchangeId: string;
-    payload: { response: string };
-  }) => void;
+  onEvent: (event: DeviceClientTestEvent) => void;
 };
+
+type DeviceClientTestEvent =
+  | {
+      type: "prompt-exchange.completed";
+      promptExchangeId: string;
+      payload: { response: string };
+    }
+  | {
+      type: "device-message.displayed";
+      occurredAt: string;
+      payload: {
+        messageId: string;
+        title: string;
+        message: string;
+        variant: "inspiration" | "info";
+        deviceId?: string;
+      };
+    };
 
 let brainHandlers: BrainHandlers | undefined;
 const connect = vi.fn((handlers: BrainHandlers) => {
@@ -89,6 +103,51 @@ describe("DeviceClient", () => {
     fireEvent.keyDown(window, { key: "Dead", code: "KeyT", altKey: true });
 
     expect(screen.queryByLabelText("Prompt input")).not.toBeInTheDocument();
+  });
+
+  it("displays heartbeat messages until they are dismissed", () => {
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "device-message.displayed",
+        occurredAt: new Date().toISOString(),
+        payload: {
+          messageId: "dm_123456789012",
+          title: "Good morning",
+          message: "Make today a little more useful than yesterday.",
+          variant: "inspiration",
+          deviceId: "dev_device-ui",
+        },
+      });
+    });
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Make today a little more useful than yesterday.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("ignores heartbeat messages targeted at another device", () => {
+    render(<DeviceClient />);
+
+    act(() => {
+      brainHandlers?.onEvent({
+        type: "device-message.displayed",
+        occurredAt: new Date().toISOString(),
+        payload: {
+          messageId: "dm_123456789012",
+          title: "Good morning",
+          message: "This belongs somewhere else.",
+          variant: "inspiration",
+          deviceId: "dev_other-device",
+        },
+      });
+    });
+
+    expect(screen.queryByText("This belongs somewhere else.")).not.toBeInTheDocument();
   });
 
   it("enables the development wake shortcut during Next.js development mode", () => {

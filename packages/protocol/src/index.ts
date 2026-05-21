@@ -134,6 +134,22 @@ export const DeviceStatusUpdatedEventSchema = z.object({
   payload: DeviceStatusSchema,
 });
 
+export const DeviceMessageDisplayedEventSchema = z.object({
+  type: z.literal("device-message.displayed"),
+  occurredAt: IsoDateTimeSchema,
+  payload: z
+    .object({
+      messageId: z
+        .string()
+        .regex(/^dm_[a-zA-Z0-9_-]{12,64}$/, "Device Message IDs must start with dm_."),
+      title: z.string().trim().min(1),
+      message: z.string().trim().min(1),
+      variant: z.enum(["inspiration", "info"]).default("info"),
+      deviceId: DeviceIdSchema.optional(),
+    })
+    .strict(),
+});
+
 export const SystemIssueReportedEventSchema = z.object({
   type: z.literal("system-issue.reported"),
   occurredAt: IsoDateTimeSchema,
@@ -146,6 +162,7 @@ export const WebSocketEventSchema = z.discriminatedUnion("type", [
   PromptExchangeCompletedEventSchema,
   PromptExchangeFailedEventSchema,
   DeviceStatusUpdatedEventSchema,
+  DeviceMessageDisplayedEventSchema,
   SystemIssueReportedEventSchema,
 ]);
 
@@ -159,6 +176,7 @@ export type PromptExchangeStatus = z.infer<typeof PromptExchangeStatusSchema>;
 export type PromptExchangeAccepted = z.infer<typeof PromptExchangeAcceptedSchema>;
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
 export type SystemIssue = z.infer<typeof SystemIssueSchema>;
+export type DeviceMessageDisplayedEvent = z.infer<typeof DeviceMessageDisplayedEventSchema>;
 export type SpeakPromptExchangeResponseCommand = z.infer<
   typeof SpeakPromptExchangeResponseCommandSchema
 >;

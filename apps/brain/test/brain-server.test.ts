@@ -529,6 +529,8 @@ describe("Brain Server", () => {
           codexCommand: "codex",
           codexArgs: ["exec"],
           codexTimeoutMs: 120000,
+          heartbeatEnabled: false,
+          heartbeatPollMs: 60000,
         },
       }),
     ).toThrow();
@@ -567,6 +569,8 @@ function createTestConfig(overrides: Partial<BrainConfig>) {
     codexCommand: "codex",
     codexArgs: ["exec"],
     codexTimeoutMs: 120000,
+    heartbeatEnabled: false,
+    heartbeatPollMs: 60000,
     ...overrides,
   };
 }
