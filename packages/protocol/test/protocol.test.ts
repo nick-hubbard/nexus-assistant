@@ -119,6 +119,22 @@ describe("protocol schemas", () => {
     ).toBe("system-issue.reported");
   });
 
+  it("accepts device display messages", () => {
+    const event = WebSocketEventSchema.parse({
+      type: "device-message.displayed",
+      occurredAt: now,
+      payload: {
+        messageId: "dm_01HZXMORNING123",
+        title: "Good morning",
+        message: "Start where you are. Use what you have. Do what you can.",
+        variant: "inspiration",
+        deviceId,
+      },
+    });
+
+    expect(event.type).toBe("device-message.displayed");
+  });
+
   it("rejects invalid protocol payloads", () => {
     expect(() => PromptExchangeIdSchema.parse("not-a-prompt-exchange-id")).toThrow();
     expect(() =>

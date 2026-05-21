@@ -1,5 +1,6 @@
 "use client";
 
+import type { DeviceMessageDisplayedEvent } from "@open-nexus/protocol";
 import { nestHubDeviceSurfacePlugin, type PromptState } from "@open-nexus/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrainClient } from "../src/brain-client";
@@ -12,6 +13,7 @@ const deviceId = "dev_device-ui";
 const standbyDelayMs = 5000;
 type SpokenResponseMode = "voice-only" | "always" | "off";
 type PromptStartMode = "text" | "voice";
+type DeviceDisplayMessage = DeviceMessageDisplayedEvent["payload"];
 
 export function DeviceClient() {
   const client = useMemo(() => createBrainClient(), []);
@@ -26,6 +28,7 @@ export function DeviceClient() {
   const [connected, setConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => formatCurrentTime());
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [displayMessage, setDisplayMessage] = useState<DeviceDisplayMessage | undefined>();
   const [prompt, setPrompt] = useState("");
   const [promptComposerVisible, setPromptComposerVisible] = useState(false);
   const [promptState, setPromptState] = useState<PromptState>("idle");
@@ -185,6 +188,13 @@ export function DeviceClient() {
             spokenPromptExchangeIdRef.current = undefined;
           }
         }
+
+        if (
+          event.type === "device-message.displayed" &&
+          (!event.payload.deviceId || event.payload.deviceId === deviceId)
+        ) {
+          setDisplayMessage(event.payload);
+        }
       },
     });
   }, [client, deviceRuntimeClient]);
@@ -192,24 +202,46 @@ export function DeviceClient() {
   const ActiveDeviceSurface = activeDeviceSurface.Surface;
 
   return (
-    <ActiveDeviceSurface
-      assistantResponse={assistantResponse}
-      connectionState={connected ? "connected" : "disconnected"}
-      currentTime={currentTime}
-      device={{
-        id: deviceId,
-        locale: getDeviceLocale(),
-        timezone: getDeviceTimezone(),
-      }}
-      errorMessage={errorMessage}
-      onPromptChange={setPrompt}
-      onSubmitPrompt={submitPrompt}
-      prompt={prompt}
-      promptComposerVisible={promptComposerVisible}
-      promptInputRef={promptInputRef}
-      promptState={promptState}
-      settings={activeDeviceSurface.defaultSettings}
-    />
+    <>
+      <ActiveDeviceSurface
+        assistantResponse={assistantResponse}
+        connectionState={connected ? "connected" : "disconnected"}
+        currentTime={currentTime}
+        device={{
+          id: deviceId,
+          locale: getDeviceLocale(),
+          timezone: getDeviceTimezone(),
+        }}
+        errorMessage={errorMessage}
+        onPromptChange={setPrompt}
+        onSubmitPrompt={submitPrompt}
+        prompt={prompt}
+        promptComposerVisible={promptComposerVisible}
+        promptInputRef={promptInputRef}
+        promptState={promptState}
+        settings={activeDeviceSurface.defaultSettings}
+      />
+      {displayMessage ? (
+        <section
+          aria-labelledby="nexus-device-message-title"
+          aria-modal="true"
+          className={`nexus-device-message-overlay is-${displayMessage.variant}`}
+          role="dialog"
+        >
+          <div className="nexus-device-message-panel">
+            <p className="nexus-device-message-kicker">{displayMessage.title}</p>
+            <h1 id="nexus-device-message-title">{displayMessage.message}</h1>
+            <button
+              className="nexus-button"
+              onClick={() => setDisplayMessage(undefined)}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </>
   );
 }
 

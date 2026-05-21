@@ -124,6 +124,52 @@ describe("Heartbeat Scheduler", () => {
 
     interactionLog.close();
   });
+
+  it("publishes due Skill display messages for Device UI surfaces", async () => {
+    const dataDir = await createDataDir();
+    const interactionLog = new InteractionLog(dataDir);
+    const published: unknown[] = [];
+    await writeHeartbeatFile(dataDir, [
+      {
+        id: "morning-inspiration",
+        name: "Morning inspiration",
+        schedule: { cron: "0 9 * * *" },
+        skillId: "inspirational-message",
+        action: "display-random-message",
+        deviceId: "dev_kitchen-display",
+      },
+    ]);
+    await writeInspirationalMessageSkillPackage(dataDir);
+
+    const scheduler = new HeartbeatScheduler({
+      dataDir,
+      interactionLog,
+      skillHost: new SkillHost({
+        dataDir,
+        loadAdapter: async () => fakeInspirationalMessageAdapter(),
+      }),
+      publish: (event) => published.push(event),
+      now: () => new Date(2026, 4, 20, 9, 0),
+    });
+
+    await scheduler.runDueTasks();
+
+    expect(published).toEqual([
+      {
+        type: "device-message.displayed",
+        occurredAt: new Date(2026, 4, 20, 9, 0).toISOString(),
+        payload: {
+          messageId: "dm_morning000001",
+          title: "Good morning",
+          message: "Make today a little more useful than yesterday.",
+          variant: "inspiration",
+          deviceId: "dev_kitchen-display",
+        },
+      },
+    ]);
+
+    interactionLog.close();
+  });
 });
 
 async function createDataDir() {
@@ -168,6 +214,51 @@ async function writeWeatherSkillPackage(dataDir: string) {
           description: "Reads a weather forecast for a configured location.",
           actions: ["daily-brief"],
           examples: ["Tell me the weather every morning."],
+        },
+      ],
+      configurationSchema: {
+        type: "object",
+        properties: {},
+      },
+    }),
+  );
+}
+
+function fakeInspirationalMessageAdapter(): SkillAdapter {
+  return {
+    invoke: () => ({
+      status: "succeeded",
+      responseText: "Displayed a morning inspiration.",
+      data: {
+        displayMessage: {
+          messageId: "dm_morning000001",
+          title: "Good morning",
+          message: "Make today a little more useful than yesterday.",
+          variant: "inspiration",
+        },
+      },
+    }),
+  };
+}
+
+async function writeInspirationalMessageSkillPackage(dataDir: string) {
+  const packagePath = path.join(installedSkillsDirForDataDir(dataDir), "inspirational-message");
+  await mkdir(packagePath, { recursive: true });
+  await writeFile(path.join(packagePath, "adapter.js"), "export default {};\n");
+  await writeFile(
+    path.join(packagePath, "skill.json"),
+    JSON.stringify({
+      id: "inspirational-message",
+      name: "Inspirational Message",
+      version: "0.1.0",
+      entrypoint: "./adapter.js",
+      capabilities: [
+        {
+          id: "inspirational-message.display",
+          title: "Display inspirational messages",
+          description: "Chooses an inspirational message for display on Nexus devices.",
+          actions: ["display-random-message"],
+          examples: ["Show an inspirational message every morning."],
         },
       ],
       configurationSchema: {

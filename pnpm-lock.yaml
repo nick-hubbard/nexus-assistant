@@ -135,6 +135,12 @@ importers:
         specifier: ^4.1.13
         version: 4.4.3
 
+  packages/inspirational-message-skill:
+    dependencies:
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.3
+
   packages/merge-gate: {}
 
   packages/protocol:

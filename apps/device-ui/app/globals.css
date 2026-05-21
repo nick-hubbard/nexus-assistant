@@ -258,6 +258,49 @@ h2 {
   line-height: 1.6;
 }
 
+.nexus-device-message-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 6vw, 72px);
+  color: #fffefa;
+  background:
+    linear-gradient(140deg, rgba(7, 38, 32, 0.88), rgba(62, 51, 31, 0.72)),
+    linear-gradient(315deg, rgba(178, 71, 48, 0.64), rgba(36, 112, 98, 0.54));
+}
+
+.nexus-device-message-panel {
+  display: grid;
+  gap: clamp(20px, 4vw, 36px);
+  width: min(100%, 920px);
+  text-align: center;
+}
+
+.nexus-device-message-kicker {
+  margin: 0;
+  font-size: clamp(1rem, 2vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.nexus-device-message-panel h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 7vw, 5.8rem);
+  line-height: 1.02;
+  text-wrap: balance;
+  text-shadow: 0 8px 38px rgba(0, 0, 0, 0.32);
+}
+
+.nexus-device-message-panel .nexus-button {
+  justify-self: center;
+  min-width: 132px;
+  color: #17211b;
+  background: #fffefa;
+}
+
 .nexus-error {
   margin-bottom: 0;
   color: #9f2f24;

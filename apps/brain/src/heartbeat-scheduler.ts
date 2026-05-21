@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { DeviceMessageDisplayedEventSchema, type WebSocketEvent } from "@open-nexus/protocol";
 import { z } from "zod";
 import { createPromptExchangeId } from "./ids.js";
 import type { InteractionLog } from "./interaction-log.js";
@@ -55,6 +56,21 @@ const HeartbeatStateSchema = z
   .strict()
   .default({ tasks: {} });
 
+const DeviceDisplayMessageSchema = z
+  .object({
+    displayMessage: z
+      .object({
+        messageId: z
+          .string()
+          .regex(/^dm_[a-zA-Z0-9_-]{12,64}$/, "Device Message IDs must start with dm_."),
+        title: z.string().trim().min(1),
+        message: z.string().trim().min(1),
+        variant: z.enum(["inspiration", "info"]).default("info"),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type HeartbeatTask = z.infer<typeof HeartbeatTaskSchema>;
 
 export interface HeartbeatRun {
@@ -72,6 +88,7 @@ export class HeartbeatScheduler {
       dataDir: string;
       skillHost: SkillHost;
       interactionLog: InteractionLog;
+      publish?: (event: WebSocketEvent) => void;
       pollMs?: number;
       now?: () => Date;
     },
@@ -128,6 +145,20 @@ export class HeartbeatScheduler {
         ...(result.responseText === undefined ? {} : { responseText: result.responseText }),
         ...(result.error === undefined ? {} : { error: result.error }),
       });
+
+      const displayMessage = DeviceDisplayMessageSchema.safeParse(result.data);
+      if (displayMessage.success) {
+        this.options.publish?.(
+          DeviceMessageDisplayedEventSchema.parse({
+            type: "device-message.displayed",
+            occurredAt: now.toISOString(),
+            payload: {
+              ...displayMessage.data.displayMessage,
+              ...(task.deviceId === undefined ? {} : { deviceId: task.deviceId }),
+            },
+          }),
+        );
+      }
 
       state.tasks[task.id] = { lastRunAt: now.toISOString() };
       await writeHeartbeatState(this.options.dataDir, state);

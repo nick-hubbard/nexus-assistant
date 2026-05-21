@@ -50,6 +50,7 @@ export function createBrainServer(options: BrainServerOptions = {}) {
       skillHost,
       interactionLog,
       pollMs: config.heartbeatPollMs,
+      publish: (event) => publishEvent(sockets, event),
     });
   const app = express();
   const server = http.createServer(app);
